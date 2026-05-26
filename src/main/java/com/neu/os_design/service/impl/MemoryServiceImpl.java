@@ -22,6 +22,15 @@ public class MemoryServiceImpl implements MemoryService {
 
     @Override
     public boolean allocateMemory(int pid, int size) {
+
+        for (MemoryBlock block : memoryBlocks) {
+            // 如果发现已经有一块不是空闲的，而且占有者就是当前请求的 PID，果断拒绝！
+            if (!block.isFree() && block.getOccupantPid() == pid) {
+                System.err.println("[内存警告] PID=" + pid + " 试图重复申请内存被拦截！");
+                return false;
+            }
+        }
+
         MemoryBlock bestFitBlock = null;
 
         // 遍历所有块，找满足条件且size最小空闲块
@@ -81,7 +90,7 @@ public class MemoryServiceImpl implements MemoryService {
             MemoryBlock current = memoryBlocks.get(i);
             MemoryBlock next = memoryBlocks.get(i + 1);
 
-            if(current.isFree() && next.isFree()) {
+            if (current.isFree() && next.isFree()) {
                 // 如果当前和下一个都空，合并当前块和下一个块
                 current.setSize(current.getSize() + next.getSize());
                 memoryBlocks.remove(i + 1); // 移除下一个块
@@ -107,5 +116,27 @@ public class MemoryServiceImpl implements MemoryService {
             }
         }
         return maxSize;
+    }
+
+    @Override
+    public int getUsedMemory() {
+        int used = 0;
+        for (MemoryBlock block : memoryBlocks) {
+            if (!block.isFree()) {
+                used += block.getSize();
+            }
+        }
+        return used;
+    }
+
+    @Override
+    public int getFreePartitionCount() {
+        int freeCount = 0;
+        for (MemoryBlock block : memoryBlocks) {
+            if (block.isFree()) {
+                freeCount++;
+            }
+        }
+        return freeCount;
     }
 }

@@ -1,0 +1,94 @@
+
+  .   ____          _            __ _ _
+ /\\ / ___'_ __ _ _(_)_ __  __ _ \ \ \ \
+( ( )\___ | '_ | '_| | '_ \/ _` | \ \ \ \
+ \\/  ___)| |_)| | | | | || (_| |  ) ) ) )
+  '  |____| .__|_| |_|_| |_\__, | / / / /
+ =========|_|==============|___/=/_/_/_/
+
+ :: Spring Boot ::                (v4.0.6)
+
+2026-05-27T09:54:42.461+08:00  INFO 4128 --- [OS_design] [  restartedMain] com.neu.os_design.OsDesignApplication    : Starting OsDesignApplication using Java 23.0.2 with PID 4128 (C:\Users\yh200\Desktop\OS_design\target\classes started by yh200 in C:\Users\yh200\Desktop\OS_design)
+2026-05-27T09:54:42.465+08:00  INFO 4128 --- [OS_design] [  restartedMain] com.neu.os_design.OsDesignApplication    : No active profile set, falling back to 1 default profile: "default"
+2026-05-27T09:54:42.593+08:00  INFO 4128 --- [OS_design] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : Devtools property defaults active! Set 'spring.devtools.add-properties' to 'false' to disable
+2026-05-27T09:54:42.593+08:00  INFO 4128 --- [OS_design] [  restartedMain] .e.DevToolsPropertyDefaultsPostProcessor : For additional web related logging consider setting the 'logging.level.web' property to 'DEBUG'
+2026-05-27T09:54:43.368+08:00  INFO 4128 --- [OS_design] [  restartedMain] com.neu.os_design.OsDesignApplication    : Started OsDesignApplication in 1.604 seconds (process running for 2.168)
+
+=======================================================
+      内存管理 (Best Fit) 自动化暴力测试启动！      
+=======================================================
+
+>>> 1. 重置系统内存为 1000KB
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  999] Size: 1000 KB | 空闲 (Free)
+  【统计】已用: 0 KB | 空闲分区数: 1 | 最大可用空闲块: 1000 KB
+  --------------------------------------
+
+>>> 2. 连续申请内存 (模拟多进程进场)
+  [分配成功] PID=101 申请 200KB
+  [分配成功] PID=102 申请 100KB
+  [分配成功] PID=103 申请 300KB
+  [分配成功] PID=104 申请 50KB
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  199] Size:  200 KB | 被 PID=101 占用
+   [Addr:  200 -  299] Size:  100 KB | 被 PID=102 占用
+   [Addr:  300 -  599] Size:  300 KB | 被 PID=103 占用
+   [Addr:  600 -  649] Size:   50 KB | 被 PID=104 占用
+   [Addr:  650 -  999] Size:  350 KB | 空闲 (Free)
+  【统计】已用: 650 KB | 空闲分区数: 1 | 最大可用空闲块: 350 KB
+  --------------------------------------
+
+>>> 3. [重要] 测试防止二次分配 (测你队友发现的bug)
+[内存警告] PID=102 试图重复申请内存被拦截！
+  [分配失败] PID=102 申请 150KB 被驳回
+
+>>> 4. 释放部分内存，产生碎片化
+  [释放] PID=102 的内存被回收。
+  [释放] PID=104 的内存被回收。
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  199] Size:  200 KB | 被 PID=101 占用
+   [Addr:  200 -  299] Size:  100 KB | 空闲 (Free)
+   [Addr:  300 -  599] Size:  300 KB | 被 PID=103 占用
+   [Addr:  600 -  999] Size:  400 KB | 空闲 (Free)
+  【统计】已用: 500 KB | 空闲分区数: 2 | 最大可用空闲块: 400 KB
+  --------------------------------------
+
+>>> 5. 测试 Best Fit (最佳适应算法)
+    当前有两个空闲块：原来 102 的 100KB，原来 104 的 50KB，以及最后一大块
+    尝试分配 PID=105, Size=40KB.  (最佳适应应该选中 50KB 的那个小块)
+  [分配成功] PID=105 申请 40KB
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  199] Size:  200 KB | 被 PID=101 占用
+   [Addr:  200 -  239] Size:   40 KB | 被 PID=105 占用
+   [Addr:  240 -  299] Size:   60 KB | 空闲 (Free)
+   [Addr:  300 -  599] Size:  300 KB | 被 PID=103 占用
+   [Addr:  600 -  999] Size:  400 KB | 空闲 (Free)
+  【统计】已用: 540 KB | 空闲分区数: 2 | 最大可用空闲块: 400 KB
+  --------------------------------------
+
+>>> 6. 测试相邻空闲块向上/向下合并功能
+    现在释放 PID=101(200KB) 和 PID=103(300KB)，看看它们会不会与周边的空闲块融为一体
+  [释放] PID=101 的内存被回收。
+  [释放] PID=103 的内存被回收。
+  [释放] PID=105 的内存被回收。
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  999] Size: 1000 KB | 空闲 (Free)
+  【统计】已用: 0 KB | 空闲分区数: 1 | 最大可用空闲块: 1000 KB
+  --------------------------------------
+
+>>> 7. 测试超过最大可用额度的爆雷情况
+  [分配失败] PID=999 申请 1200KB 被驳回
+  --------------------------------------
+  【当前内存条状态】
+   [Addr:    0 -  999] Size: 1000 KB | 空闲 (Free)
+  【统计】已用: 0 KB | 空闲分区数: 1 | 最大可用空闲块: 1000 KB
+  --------------------------------------
+
+=======================================================
+                 内存管理测试结束！                 
+=======================================================

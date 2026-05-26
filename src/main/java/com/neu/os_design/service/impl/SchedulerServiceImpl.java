@@ -24,10 +24,16 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     private int currentTime = 0;
 
+    // 初始资源配置，供 resetClock() 恢复
+    private int initialMemorySize = 1024;
+    private int initialA = 10;
+    private int initialB = 10;
+    private int initialC = 10;
+
     private SchedulingStrategy currentStrategy = new HRRN();
 
     private int timeSliceCounter = 0;
-    private final int TIME_SLICE = 2; // 时间片长度 2 个时钟周期
+    private final int TIME_SLICE = 3; // 时间片长度 3 个时钟周期
 
     // 队列定义
     private final List<PCB> jobQueue = new LinkedList<>();   // 创建态队列
@@ -45,7 +51,9 @@ public class SchedulerServiceImpl implements SchedulerService {
 
         // 尝试分配内存
         if (memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
-            // 内存分配成功，加入就绪态队列
+            // 内存分配成功，给 PCB 填写已分配的内存数量！
+            pcb.setAllocatedMemory(pcb.getMemoryNeed());
+            // 加入就绪态队列
             pcb.setState(PCB.READY);
             readyQueue.add(pcb);
             System.out.println("[提交进程] PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]");
@@ -190,7 +198,9 @@ public class SchedulerServiceImpl implements SchedulerService {
 
                 System.out.println("[调度][" + currentStrategy.getAlgorithmName() + "] PID=" + runningProcess.getPid() + " 被调度运行" + " 响应比: " + runningProcess.getResponseRatio());
             } else {
-                System.err.println("[异常] CPU 被未知实体占用");
+                // CPU 被占用 — 回滚已分配的资源，进程放回就绪队列
+                resourceService.releaseResources(bestCandidate);
+                System.err.println("[异常] CPU 被占用，PID=" + bestCandidate.getPid() + " 资源已回滚，回到就绪队列");
             }
         } else {
             readyQueue.remove(bestCandidate);
@@ -239,6 +249,9 @@ public class SchedulerServiceImpl implements SchedulerService {
         readyQueue.clear();
         blockQueue.clear();
         deadQueue.clear();
+        memoryService.resetMemory(initialMemorySize);
+        resourceService.resetResources(initialA, initialB, initialC);
+        com.neu.os_design.model.PCB.resetPidSeq();
     }
 
     @Override

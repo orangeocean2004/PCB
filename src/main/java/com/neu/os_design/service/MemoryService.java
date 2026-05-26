@@ -41,7 +41,19 @@ public interface MemoryService {
     List<MemoryBlock> getMemoryStatus();
 
     /**
-     * 获取当前最大的连续空闲内存块的大小 用来判断能不能满足新进程
+     * 获取当前可以分配得下的最大连续内存块大小
      */
     int getMaxAvailableMemory();
+
+    /**
+     * 获取系统当前总计已经被使用的内存大小
+     * @return 已经被占用的内存总量
+     */
+    int getUsedMemory();
+
+    /**
+     * 获取系统当前有多少个空闲分区
+     * @return 空闲分区数量
+     */
+    int getFreePartitionCount();
 }

@@ -24,6 +24,17 @@ public class PCB {
     private static int pid_seq = 1;
     private static final Semaphore pidMutex = new Semaphore(1);
 
+    public static void resetPidSeq() {
+        try {
+            pidMutex.acquire();
+            pid_seq = 1;
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+        } finally {
+            pidMutex.release();
+        }
+    }
+
     // ================== 基本进程信息 ==================
     private int pid;
     private int totalTime;
