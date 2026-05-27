@@ -2,6 +2,7 @@ package com.neu.os_design.service.impl;
 
 import com.neu.os_design.model.MemoryBlock;
 import com.neu.os_design.service.MemoryService;
+import jakarta.annotation.PostConstruct;
 import org.springframework.stereotype.Service;
 
 import java.util.ArrayList;
@@ -13,6 +14,11 @@ public class MemoryServiceImpl implements MemoryService {
 
     // 维护一个严格按照物理地址从小到大排序的内存块链表
     private final List<MemoryBlock> memoryBlocks = new ArrayList<>();
+
+    @PostConstruct
+    public void init() {
+        memoryBlocks.add(new MemoryBlock(0, 1024, true, -1));
+    }
 
     @Override
     public void resetMemory(int totalSize) {

@@ -1,0 +1,104 @@
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;background:#f5f5f5;color:#333;min-height:100vh}
+
+/* 顶栏 */
+.header{background:#fff;padding:12px 20px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #ddd;box-shadow:0 1px 3px rgba(0,0,0,.08)}
+.header h1{font-size:1.2em;font-weight:600;color:#333}
+.clock{font-size:1.3em;font-weight:bold;color:#d35400;font-family:monospace}
+
+/* 布局 */
+.main{padding:16px;max-width:1500px;margin:0 auto;display:grid;grid-template-columns:320px 1fr;gap:16px}
+
+/* 面板 */
+.panel{background:#fff;border-radius:6px;padding:14px;border:1px solid #e0e0e0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.panel h3{color:#555;margin-bottom:10px;font-size:.9em;font-weight:600;text-transform:uppercase;letter-spacing:.5px}
+.panel hr{border:none;border-top:1px solid #eee;margin:12px 0}
+
+/* 表单 */
+.form-group{margin-bottom:8px}
+.form-group label{display:block;font-size:.78em;color:#888;margin-bottom:2px}
+.form-group input,.form-group select{width:100%;padding:6px 8px;background:#fff;border:1px solid #ccc;border-radius:4px;color:#333;font-size:.85em}
+.form-group input:focus,.form-group select:focus{outline:none;border-color:#3498db;box-shadow:0 0 0 2px rgba(52,152,219,.15)}
+.form-row{display:flex;gap:6px}
+.form-row .form-group{flex:1}
+
+/* 按钮 */
+.btn{display:inline-block;padding:7px 12px;border:1px solid transparent;border-radius:4px;cursor:pointer;font-size:.82em;font-weight:500;transition:background .15s}
+.btn-full{width:100%}
+.btn-primary{background:#3498db;color:#fff;border-color:#2980b9}
+.btn-primary:hover{background:#2980b9}
+.btn-green{background:#27ae60;color:#fff;border-color:#219a52}
+.btn-green:hover{background:#219a52}
+.btn-yellow{background:#f39c12;color:#fff;border-color:#e67e22}
+.btn-yellow:hover{background:#e67e22}
+.btn-gray{background:#95a5a6;color:#fff;border-color:#7f8c8d}
+.btn-gray:hover{background:#7f8c8d}
+.btn-danger{background:#e74c3c;color:#fff;border-color:#c0392b;padding:3px 8px;font-size:.72em}
+.btn-danger:hover{background:#c0392b}
+.btn-sm{padding:3px 8px;font-size:.72em;margin:0 2px}
+.warn{background:#e67e22;color:#fff;border-color:#d35400}
+.warn:hover{background:#d35400}
+.btn-row{display:flex;gap:4px}
+
+/* 右侧内容 */
+.content{display:flex;flex-direction:column;gap:12px}
+
+/* 运行进程卡片 */
+.running-card{background:#fff;border:1px solid #e0e0e0;border-left:4px solid #3498db;border-radius:6px;padding:16px;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.running-card h3{color:#555;margin-bottom:8px;font-size:.9em;font-weight:600}
+.running-info{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:8px}
+.running-info .item{background:#f9f9f9;padding:8px;border-radius:4px;border:1px solid #eee}
+.running-info .label{font-size:.72em;color:#999}
+.running-info .value{font-size:1em;font-weight:600;color:#333}
+.idle{color:#bbb;font-style:italic}
+.running-actions{margin-top:10px;display:flex;gap:6px}
+
+/* 队列 */
+.queue-section{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.queue-panel{background:#fff;border-radius:6px;padding:12px;border:1px solid #e0e0e0;box-shadow:0 1px 2px rgba(0,0,0,.04)}
+.queue-panel h4{color:#555;margin-bottom:6px;font-size:.82em;font-weight:600;display:flex;align-items:center;gap:8px}
+.queue-panel h4 .count{background:#3498db;color:#fff;border-radius:10px;padding:1px 7px;font-size:.75em}
+table{width:100%;border-collapse:collapse;font-size:.78em}
+th{text-align:left;padding:5px 6px;color:#888;border-bottom:2px solid #eee;font-weight:500;white-space:nowrap}
+td{padding:5px 6px;border-bottom:1px solid #f5f5f5}
+th:last-child,td:last-child{text-align:center}
+.empty-row{color:#bbb;text-align:center;padding:16px!important}
+.process-actions{display:flex;gap:2px;justify-content:center}
+
+/* 资源+内存 */
+.info-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+.resource-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px}
+.res-item{background:#f9f9f9;padding:10px;border-radius:4px;text-align:center;border:1px solid #eee}
+.res-item .val{font-size:1.3em;font-weight:bold;color:#333}
+.res-item .val.busy{color:#e74c3c}
+.res-item .lbl{font-size:.7em;color:#888;margin-top:2px}
+
+/* 内存条 */
+.memory-bar{background:#eee;border-radius:3px;height:28px;display:flex;overflow:hidden;margin:8px 0;border:1px solid #ddd}
+.memory-bar .seg{height:100%;transition:width .3s}
+.memory-bar .seg.free{background:#ecf0f1}
+.memory-bar .seg.used{background:#3498db}
+.memory-legend{display:flex;gap:14px;font-size:.75em;color:#888}
+.memory-legend b{color:#333}
+.memory-legend span{display:flex;align-items:center;gap:4px}
+.memory-legend .dot{width:10px;height:10px;border-radius:2px;display:inline-block}
+.memory-legend .used-dot{background:#3498db}
+.memory-legend .free-dot{background:#ecf0f1;border:1px solid #ddd}
+.memory-stats{display:flex;gap:16px;font-size:.78em;margin-top:4px;color:#888}
+.memory-stats b{color:#333}
+
+/* tick 控制 */
+.tick-controls{display:flex;gap:6px;align-items:center}
+.tick-controls input[type=number]{width:56px;padding:5px 6px;background:#fff;border:1px solid #ccc;border-radius:4px;color:#333;text-align:center;font-size:.85em}
+.auto-tick{display:flex;align-items:center;gap:6px;margin-top:6px;font-size:.85em;color:#666}
+
+/* 状态标记 */
+.badge{padding:2px 8px;border-radius:10px;font-size:.72em;font-weight:600}
+.badge-dead{background:#ddd;color:#999}
+
+/* 手动/自动开关 */
+.toggle-label{display:flex;align-items:center;gap:8px;font-size:.85em;color:#666;cursor:pointer}
+.toggle-label input[type=checkbox]{appearance:none;width:44px;height:24px;background:#bbb;border-radius:12px;position:relative;cursor:pointer;transition:background .2s}
+.toggle-label input[type=checkbox]:checked{background:#3498db}
+.toggle-label input[type=checkbox]::after{content:'';position:absolute;top:2px;left:2px;width:20px;height:20px;background:#fff;border-radius:50%;transition:left .2s;box-shadow:0 1px 2px rgba(0,0,0,.15)}
+.toggle-label input[type=checkbox]:checked::after{left:22px}

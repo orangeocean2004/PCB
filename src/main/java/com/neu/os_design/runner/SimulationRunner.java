@@ -4,10 +4,12 @@ import com.neu.os_design.model.MemoryBlock;
 import com.neu.os_design.service.MemoryService;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.CommandLineRunner;
+import org.springframework.context.annotation.Profile;
 import org.springframework.stereotype.Component;
 
 import java.util.List;
 
+@Profile("runner")
 @Component
 public class SimulationRunner implements CommandLineRunner {
 

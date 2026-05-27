@@ -105,6 +105,7 @@ public class SystemResourceServiceImpl implements SystemResourceService {
             System.out.println("CPU 被占用了");
         }
         return gotCpu;
+
     }
 
     @Override
@@ -112,6 +113,21 @@ public class SystemResourceServiceImpl implements SystemResourceService {
         if(cpuResource.availablePermits() == 0) {
             cpuResource.release();
         }
+    }
+
+    @Override
+    public int getAvailableA() {
+        return resourceA.availablePermits();
+    }
+
+    @Override
+    public int getAvailableB() {
+        return resourceB.availablePermits();
+    }
+
+    @Override
+    public int getAvailableC() {
+        return resourceC.availablePermits();
     }
 
 }

@@ -1,0 +1,127 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>OS 模拟器</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="header">
+  <h1>OS 进程调度模拟器</h1>
+  <div class="clock">T: <span id="clockTime">0</span></div>
+</div>
+
+<div class="main">
+  <!-- 左侧控制面板 -->
+  <div class="panel">
+    <h3>提交进程</h3>
+    <div class="form-row">
+      <div class="form-group"><label>总时长</label><input id="fTotalTime" type="number" value="5" min="1" max="20"></div>
+      <div class="form-group"><label>优先级(越小越高)</label><input id="fPriority" type="number" value="1" min="0" max="10"></div>
+    </div>
+    <div class="form-row">
+      <div class="form-group"><label>需要A</label><input id="fNeedA" type="number" value="0" min="0" max="10"></div>
+      <div class="form-group"><label>需要B</label><input id="fNeedB" type="number" value="0" min="0" max="10"></div>
+      <div class="form-group"><label>需要C</label><input id="fNeedC" type="number" value="0" min="0" max="10"></div>
+    </div>
+    <div class="form-group"><label>内存需求(KB)</label><input id="fMemory" type="number" value="64" min="1" max="1024"></div>
+    <button class="btn btn-primary btn-full" onclick="submit()">提交进程</button>
+
+    <hr>
+
+    <h3>调度算法</h3>
+    <select id="algoSelect" onchange="setAlgorithm(this.value)">
+      <option value="1">FCFS - 先来先服务</option>
+      <option value="2">SJF - 短作业优先</option>
+      <option value="3" selected>HRRN - 高响应比优先</option>
+      <option value="4">Priority - 优先级调度</option>
+      <option value="5">RR - 时间片轮转</option>
+    </select>
+
+    <hr>
+
+    <h3>时钟控制</h3>
+    <div class="tick-controls">
+      <button class="btn btn-yellow" onclick="tick()" style="flex:1">+1 Tick</button>
+      <input id="tickN" type="number" value="5" min="1" max="100">
+      <button class="btn btn-yellow" onclick="tickN()">N</button>
+    </div>
+    <div class="auto-tick">
+      <input type="checkbox" id="autoTick" onchange="toggleAutoTick()">
+      <label for="autoTick">自动推进 (1s)</label>
+    </div>
+
+    <hr>
+
+    <h3>模式 & 重置</h3>
+    <label class="toggle-label">
+      <input type="checkbox" id="manualMode" onchange="toggleDispatchMode()">
+      <span id="modeLabel">手动分配模式 (当前: 自动)</span>
+    </label>
+    <div class="btn-row" style="margin-top:8px">
+      <button class="btn btn-green" onclick="dispatchResources()" style="flex:1">手动分配</button>
+      <button class="btn btn-gray" onclick="resetSim()" style="flex:1">重置</button>
+    </div>
+  </div>
+
+  <!-- 右侧状态区 -->
+  <div class="content">
+    <div class="running-card" id="runningCard">
+      <h3>当前运行进程</h3>
+      <div id="runningInfo" class="idle">CPU 空闲</div>
+    </div>
+
+    <div class="queue-section">
+      <div class="queue-panel">
+        <h4>就绪队列 <span class="count" id="readyCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>总时长</th><th>已运行</th><th>优先级</th><th>内存</th><th>操作</th></tr></thead><tbody id="readyBody"></tbody></table>
+      </div>
+      <div class="queue-panel">
+        <h4>阻塞队列 <span class="count" id="blockCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>总时长</th><th>已运行</th><th>优先级</th><th>A/B/C</th><th>操作</th></tr></thead><tbody id="blockBody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="queue-section">
+      <div class="queue-panel">
+        <h4>创建队列 <span class="count" id="jobCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>总时长</th><th>优先级</th><th>内存</th><th>A/B/C需</th><th>操作</th></tr></thead><tbody id="jobBody"></tbody></table>
+      </div>
+      <div class="queue-panel">
+        <h4>终止队列 <span class="count" id="deadCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>总时长</th><th>周转</th><th>优先级</th><th>状态</th><th>操作</th></tr></thead><tbody id="deadBody"></tbody></table>
+      </div>
+    </div>
+
+    <div class="info-row">
+      <div class="panel">
+        <h3>系统资源</h3>
+        <div class="resource-grid">
+          <div class="res-item"><div class="val" id="resA">10</div><div class="lbl">资源 A</div></div>
+          <div class="res-item"><div class="val" id="resB">10</div><div class="lbl">资源 B</div></div>
+          <div class="res-item"><div class="val" id="resC">10</div><div class="lbl">资源 C</div></div>
+          <div class="res-item"><div class="val" id="cpuStatus">空闲</div><div class="lbl">CPU</div></div>
+        </div>
+      </div>
+      <div class="panel">
+        <h3>内存状态</h3>
+        <div class="memory-bar" id="memoryBar"></div>
+        <div class="memory-legend">
+          <span><span class="dot used-dot"></span>已用 <b id="memUsed">0</b>KB</span>
+          <span><span class="dot free-dot"></span>空闲 <b id="memFree">1024</b>KB</span>
+        </div>
+        <div class="memory-stats">
+          <span>最大连续空闲: <b id="memMaxFree">1024</b>KB</span>
+          <span>空闲分区数: <b id="memPartitions">1</b></span>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="api.js"></script>
+<script src="render.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -25,4 +25,9 @@ public interface SystemResourceService {
 
     // 释放CPU
     void releaseCpu();
+
+    // 查询当前可用资源数量（供前端展示）
+    int getAvailableA();
+    int getAvailableB();
+    int getAvailableC();
 }

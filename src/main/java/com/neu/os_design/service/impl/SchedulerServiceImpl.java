@@ -31,6 +31,7 @@ public class SchedulerServiceImpl implements SchedulerService {
     private int initialC = 10;
 
     private SchedulingStrategy currentStrategy = new HRRN();
+    private int currentAlgorithmType = SchedulerService.ALGO_HRRN;
 
     private int timeSliceCounter = 0;
     private final int TIME_SLICE = 3; // 时间片长度 3 个时钟周期
@@ -43,22 +44,27 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     private PCB runningProcess = null;    // 当前正在运行的进程
 
+    private boolean manualDispatchMode = false; // 手动资源分配模式开关
+
     @Override
     public PCB submitProcess(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed) {
-        // 创建进程 PCB
         PCB pcb = new PCB(totalTime, priority, needA, needB, needC, memoryNeed, currentTime);
         pcb.setState(PCB.CREATED);
 
-        // 尝试分配内存
+        if (manualDispatchMode) {
+            // 手动模式：进程直接进入创建队列，不自动分配任何资源
+            jobQueue.add(pcb);
+            System.out.println("[提交进程] PID=" + pcb.getPid() + " [手动模式] 进入 [创建队列]，等待手动分配资源");
+            return pcb;
+        }
+
+        // 自动模式：尝试分配内存
         if (memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
-            // 内存分配成功，给 PCB 填写已分配的内存数量！
             pcb.setAllocatedMemory(pcb.getMemoryNeed());
-            // 加入就绪态队列
             pcb.setState(PCB.READY);
             readyQueue.add(pcb);
             System.out.println("[提交进程] PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]");
         } else {
-            // 内存分配失败 加入创建态队列 等待内存资源
             jobQueue.add(pcb);
             System.out.println("[提交进程] PID=" + pcb.getPid() + " 内存分配失败，进入 [创建队列]");
         }
@@ -97,7 +103,11 @@ public class SchedulerServiceImpl implements SchedulerService {
     }
 
     private void checkJobQueueForMemory() {
-        // 遍历job队列，尝试分配内存，如果成功就转移到ready队列
+        // 手动模式下不自动分配，由用户手动触发 dispatchResources()
+        if (manualDispatchMode) {
+            return;
+        }
+
         var it = jobQueue.iterator();
 
         while (it.hasNext()) {
@@ -106,25 +116,41 @@ public class SchedulerServiceImpl implements SchedulerService {
             if (memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
                 pcb.setAllocatedMemory(pcb.getMemoryNeed());
                 pcb.setState(PCB.READY);
-                it.remove();    // 从创建队列移除
-                readyQueue.add(pcb);    // 加入就绪队列
+                it.remove();
+                readyQueue.add(pcb);
                 System.out.println("[创建队列] PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]");
             }
         }
     }
 
     private void checkBlockQueueForResources() {
-        // 遍历block队列，尝试分配资源，如果成功就转移到ready队列
+        // 遍历block队列，尝试分配内存+ABC资源，如果成功就转移到ready队列
         var it = blockQueue.iterator();
 
         while (it.hasNext()) {
             PCB pcb = it.next();
+            boolean newlyAllocatedMemory = false;
+
+            // 如果进程还没有内存，先尝试分配内存
+            if (pcb.getAllocatedMemory() == 0) {
+                if (!memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
+                    continue; // 内存不够，继续等
+                }
+                pcb.setAllocatedMemory(pcb.getMemoryNeed());
+                newlyAllocatedMemory = true;
+            }
 
             if (resourceService.allocateResources(pcb)) {
                 pcb.setState(PCB.READY);
                 it.remove();
                 readyQueue.add(pcb);
                 System.out.println("[阻塞队列] PID=" + pcb.getPid() + " 资源分配成功，进入 [就绪队列]");
+            } else {
+                // ABC资源不够，只回滚本轮刚分配的内存，不动blockProcess保留的
+                if (newlyAllocatedMemory) {
+                    memoryService.releaseMemory(pcb.getPid());
+                    pcb.setAllocatedMemory(0);
+                }
             }
         }
     }
@@ -204,9 +230,14 @@ public class SchedulerServiceImpl implements SchedulerService {
             }
         } else {
             readyQueue.remove(bestCandidate);
+            // ABC资源不足，回滚已分配的内存
+            if (bestCandidate.getAllocatedMemory() > 0) {
+                memoryService.releaseMemory(bestCandidate.getPid());
+                bestCandidate.setAllocatedMemory(0);
+            }
             bestCandidate.setState(PCB.BLOCK);
             blockQueue.add(bestCandidate);
-            System.out.println("[调度] PID=" + bestCandidate.getPid() + " 资源A B C不足，进入 [阻塞队列]");
+            System.out.println("[调度] PID=" + bestCandidate.getPid() + " 资源A B C不足，已释放内存，进入 [阻塞队列]");
         }
     }
 
@@ -252,10 +283,12 @@ public class SchedulerServiceImpl implements SchedulerService {
         memoryService.resetMemory(initialMemorySize);
         resourceService.resetResources(initialA, initialB, initialC);
         com.neu.os_design.model.PCB.resetPidSeq();
+        manualDispatchMode = false;
     }
 
     @Override
     public void setAlgorithmType(int algorithmType) {
+        this.currentAlgorithmType = algorithmType;
         switch (algorithmType) {
             case SchedulerService.ALGO_FCFS:
                 this.currentStrategy = new FCFS();
@@ -274,7 +307,198 @@ public class SchedulerServiceImpl implements SchedulerService {
                 break;
             default:
                 this.currentStrategy = new HRRN();
+                this.currentAlgorithmType = SchedulerService.ALGO_HRRN;
         }
         System.out.println(">>> 调度算法已切换为: " + currentStrategy.getAlgorithmName());
+    }
+
+    @Override
+    public int getAlgorithmType() {
+        return currentAlgorithmType;
+    }
+
+    @Override
+    public String getAlgorithmName() {
+        return currentStrategy.getAlgorithmName();
+    }
+
+    @Override
+    public void setResourceDispatchMode(boolean manual) {
+        boolean wasManual = this.manualDispatchMode;
+        this.manualDispatchMode = manual;
+        if (manual && !wasManual) {
+            System.out.println(">>> 资源分配模式切换为: [手动模式] — 进程进入创建队列，需手动触发分配");
+        } else if (!manual && wasManual) {
+            System.out.println(">>> 资源分配模式切换为: [自动模式] — 进程提交时自动分配资源");
+            // 切换到自动模式时，立刻尝试把创建队列里的进程分配了
+            checkJobQueueForMemory();
+        }
+    }
+
+    @Override
+    public boolean isManualDispatchMode() {
+        return manualDispatchMode;
+    }
+
+    @Override
+    public void dispatchResources() {
+        if (jobQueue.isEmpty()) {
+            System.out.println("[手动分配] 创建队列为空，没有进程需要分配资源");
+            return;
+        }
+
+        if (!manualDispatchMode) {
+            System.out.println("[手动分配] 当前为自动模式，无需手动分配。请先切换到手动模式。");
+            return;
+        }
+
+        System.out.println("[手动分配] 开始遍历创建队列，共 " + jobQueue.size() + " 个进程...");
+
+        int successCount = 0;
+        int failCount = 0;
+
+        var it = jobQueue.iterator();
+        while (it.hasNext()) {
+            PCB pcb = it.next();
+
+            // 先分配内存
+            boolean memOk = memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed());
+            if (!memOk) {
+                failCount++;
+                System.out.println("[手动分配] PID=" + pcb.getPid() + " 内存不足(" + pcb.getMemoryNeed() + "KB)，跳过");
+                continue;
+            }
+            pcb.setAllocatedMemory(pcb.getMemoryNeed());
+
+            // 再分配ABC资源
+            boolean resOk = resourceService.allocateResources(pcb);
+            if (!resOk) {
+                // 回滚内存
+                memoryService.releaseMemory(pcb.getPid());
+                pcb.setAllocatedMemory(0);
+                failCount++;
+                System.out.println("[手动分配] PID=" + pcb.getPid() + " ABC资源不足，内存已回滚，跳过");
+                continue;
+            }
+
+            // 全部成功 → 转入就绪队列
+            pcb.setState(PCB.READY);
+            it.remove();
+            readyQueue.add(pcb);
+            successCount++;
+            System.out.println("[手动分配] PID=" + pcb.getPid() + " 内存+" + pcb.getMemoryNeed()
+                    + "KB + ABC(" + pcb.getNeedA() + "," + pcb.getNeedB() + "," + pcb.getNeedC()
+                    + ") 分配成功 → [就绪队列]");
+        }
+
+        System.out.println("[手动分配] 完成：成功=" + successCount + "，失败=" + failCount
+                + "，创建队列剩余=" + jobQueue.size());
+    }
+
+    @Override
+    public boolean cancelProcess(int pid) {
+        // 1. 检查是否在创建队列
+        var jobIt = jobQueue.iterator();
+        while (jobIt.hasNext()) {
+            PCB pcb = jobIt.next();
+            if (pcb.getPid() == pid) {
+                jobIt.remove();
+                pcb.setState(PCB.DEAD);
+                deadQueue.add(pcb);
+                System.out.println("[撤销] PID=" + pid + " 从创建队列中撤销，进入 [终止队列]");
+                return true;
+            }
+        }
+
+        // 2. 检查是否在就绪队列
+        var readyIt = readyQueue.iterator();
+        while (readyIt.hasNext()) {
+            PCB pcb = readyIt.next();
+            if (pcb.getPid() == pid) {
+                readyIt.remove();
+                memoryService.releaseMemory(pid);
+                resourceService.releaseResources(pcb);
+                pcb.setState(PCB.DEAD);
+                deadQueue.add(pcb);
+                System.out.println("[撤销] PID=" + pid + " 从就绪队列中撤销，资源已回收，进入 [终止队列]");
+                return true;
+            }
+        }
+
+        // 3. 检查是否在阻塞队列
+        var blockIt = blockQueue.iterator();
+        while (blockIt.hasNext()) {
+            PCB pcb = blockIt.next();
+            if (pcb.getPid() == pid) {
+                blockIt.remove();
+                memoryService.releaseMemory(pid);
+                resourceService.releaseResources(pcb);
+                pcb.setState(PCB.DEAD);
+                deadQueue.add(pcb);
+                System.out.println("[撤销] PID=" + pid + " 从阻塞队列中撤销，资源已回收，进入 [终止队列]");
+                return true;
+            }
+        }
+
+        // 4. 检查是否是当前运行的进程
+        if (runningProcess != null && runningProcess.getPid() == pid) {
+            resourceService.releaseCpu();
+            memoryService.releaseMemory(pid);
+            resourceService.releaseResources(runningProcess);
+            runningProcess.setState(PCB.DEAD);
+            deadQueue.add(runningProcess);
+            System.out.println("[撤销] PID=" + pid + " 正在运行的进程被撤销，CPU/内存/资源已回收，进入 [终止队列]");
+            runningProcess = null;
+            timeSliceCounter = 0;
+            return true;
+        }
+
+        System.out.println("[撤销] 未找到 PID=" + pid + " 的活跃进程");
+        return false;
+    }
+
+    @Override
+    public boolean blockProcess() {
+        if (runningProcess == null) {
+            System.out.println("[阻塞] 当前没有正在运行的进程");
+            return false;
+        }
+
+        PCB pcb = runningProcess;
+        resourceService.releaseCpu();
+        pcb.setState(PCB.BLOCK);
+        runningProcess = null;
+        timeSliceCounter = 0;
+        blockQueue.add(pcb);
+        System.out.println("[阻塞] PID=" + pcb.getPid() + " 被阻塞，CPU已释放，资源保留，进入 [阻塞队列]");
+        return true;
+    }
+
+    @Override
+    public boolean wakeupProcess(int pid) {
+        var it = blockQueue.iterator();
+        while (it.hasNext()) {
+            PCB pcb = it.next();
+            if (pcb.getPid() == pid) {
+                boolean hasResources = pcb.getAllocatedMemory() > 0
+                        || pcb.getGetA() > 0
+                        || pcb.getGetB() > 0
+                        || pcb.getGetC() > 0;
+
+                if (!hasResources) {
+                    System.out.println("[唤醒] PID=" + pid + " 唤醒失败：未持有资源，需先手动分配资源");
+                    return false;
+                }
+
+                it.remove();
+                pcb.setState(PCB.READY);
+                readyQueue.add(pcb);
+                System.out.println("[唤醒] PID=" + pid + " 唤醒成功，进入 [就绪队列]");
+                return true;
+            }
+        }
+
+        System.out.println("[唤醒] 未在阻塞队列中找到 PID=" + pid);
+        return false;
     }
 }
