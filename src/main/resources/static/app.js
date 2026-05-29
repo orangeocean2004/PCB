@@ -1,6 +1,7 @@
 // ==================== 操作入口（调用 api.js） ====================
 
-function submit() { submitProcess().then(refresh); }
+function submit() { submitProcess().then(refresh).catch(e => alert(e.message)); }
+function submitBatch() { submitBatchProcesses().then(refresh).catch(e => alert(e.message)); }
 function cancel(pid) { cancelProcess(pid).then(refresh); }
 function block() { blockProcess().then(refresh); }
 function wakeup(pid) { wakeupProcess(pid).then(refresh); }

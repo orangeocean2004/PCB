@@ -10,6 +10,7 @@ import com.neu.os_design.service.strategy.algorithm.*;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
+import java.util.Comparator;
 import java.util.LinkedList;
 import java.util.List;
 
@@ -37,6 +38,7 @@ public class SchedulerServiceImpl implements SchedulerService {
     private final int TIME_SLICE = 3; // 时间片长度 3 个时钟周期
 
     // 队列定义
+    private final List<PCB> pendingQueue = new LinkedList<>(); // 待提交队列
     private final List<PCB> jobQueue = new LinkedList<>();   // 创建态队列
     private final List<PCB> readyQueue = new LinkedList<>();  // 就绪态队列
     private final List<PCB> blockQueue = new LinkedList<>();  // 阻塞态队列
@@ -48,28 +50,65 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     @Override
     public PCB submitProcess(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed) {
-        PCB pcb = new PCB(totalTime, priority, needA, needB, needC, memoryNeed, currentTime);
+        return submitProcessAt(currentTime, null, totalTime, priority, needA, needB, needC, memoryNeed);
+    }
+
+    @Override
+    public PCB submitProcessAt(int submitTime, String submitClock,
+                               int totalTime, int priority, int needA, int needB, int needC, int memoryNeed) {
+        validateResourceCapacity(needA, needB, needC);
+
+        int actualSubmitTime = Math.max(0, submitTime);
+        PCB pcb = new PCB(totalTime, priority, needA, needB, needC, memoryNeed, actualSubmitTime);
+        pcb.setSubmitClock(submitClock);
+
+        if (actualSubmitTime > currentTime) {
+            pcb.setState(PCB.SCHEDULED);
+            pendingQueue.add(pcb);
+            pendingQueue.sort(Comparator.comparingInt(PCB::getArrivalTime).thenComparingInt(PCB::getPid));
+            System.out.println("[定时提交] PID=" + pcb.getPid() + " 将在 T=" + actualSubmitTime
+                    + formatSubmitClock(pcb) + " 提交");
+            return pcb;
+        }
+
+        admitProcess(pcb);
+        return pcb;
+    }
+
+    private void admitProcess(PCB pcb) {
         pcb.setState(PCB.CREATED);
 
         if (manualDispatchMode) {
             // 手动模式：进程直接进入创建队列，不自动分配任何资源
             jobQueue.add(pcb);
             System.out.println("[提交进程] PID=" + pcb.getPid() + " [手动模式] 进入 [创建队列]，等待手动分配资源");
-            return pcb;
+            return;
         }
 
-        // 自动模式：尝试分配内存
-        if (memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
-            pcb.setAllocatedMemory(pcb.getMemoryNeed());
-            pcb.setState(PCB.READY);
-            readyQueue.add(pcb);
-            System.out.println("[提交进程] PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]");
-        } else {
+        if (!allocateMemoryAndResourcesForReady(pcb, "[提交进程]")) {
             jobQueue.add(pcb);
             System.out.println("[提交进程] PID=" + pcb.getPid() + " 内存分配失败，进入 [创建队列]");
         }
 
-        return pcb;
+    }
+
+    private String formatSubmitClock(PCB pcb) {
+        if (pcb.getSubmitClock() == null || pcb.getSubmitClock().isBlank()) {
+            return "";
+        }
+        return " (" + pcb.getSubmitClock() + ")";
+    }
+
+    private void validateResourceCapacity(int needA, int needB, int needC) {
+        if (resourceService.checkResourcesWithinTotal(needA, needB, needC)) {
+            return;
+        }
+
+        String message = "资源请求超过系统总量: needA=" + needA + "/" + resourceService.getTotalA()
+                + ", needB=" + needB + "/" + resourceService.getTotalB()
+                + ", needC=" + needC + "/" + resourceService.getTotalC();
+        System.out.println("[提交拒绝] " + message);
+        throw new IllegalArgumentException(message);
     }
 
     @Override
@@ -78,20 +117,37 @@ public class SchedulerServiceImpl implements SchedulerService {
         currentTime++;
         System.out.println("============== [当前系统时钟: " + currentTime + "] ==============");
 
-        // 1. 更新所有等待队伍
+        // 1. 将到达提交时间的进程正式送入系统
+        releaseDueSubmissions();
+
+        // 2. 更新所有等待队伍
         updateAllWaitTimes();
 
-        // 2. 检查创建队列 有多的内存看看能不能调入就绪队列
+        // 3. 检查创建队列 有多的内存看看能不能调入就绪队列
         checkJobQueueForMemory();
 
-        // 3. 检查阻塞队列 有多的资源看看能不能调入就绪队列
+        // 4. 检查阻塞队列 有多的资源看看能不能调入就绪队列
         checkBlockQueueForResources();
 
-        // 4. cpu上正在运行的进程的时间片 进度 判断 跑完？ 时间片到了？
+        // 5. cpu上正在运行的进程的时间片 进度 判断 跑完？ 时间片到了？
         manageRunningProcess();
 
-        // 5. cpu空闲 就调度
+        // 6. cpu空闲 就调度
         scheduleNextProcess();
+    }
+
+    private void releaseDueSubmissions() {
+        var it = pendingQueue.iterator();
+        while (it.hasNext()) {
+            PCB pcb = it.next();
+            if (pcb.getArrivalTime() > currentTime) {
+                break;
+            }
+            it.remove();
+            System.out.println("[到达提交时间] PID=" + pcb.getPid() + " 在 T=" + currentTime
+                    + formatSubmitClock(pcb) + " 进入系统");
+            admitProcess(pcb);
+        }
     }
 
     private void updateAllWaitTimes() {
@@ -113,14 +169,32 @@ public class SchedulerServiceImpl implements SchedulerService {
         while (it.hasNext()) {
             PCB pcb = it.next();
 
-            if (memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
-                pcb.setAllocatedMemory(pcb.getMemoryNeed());
-                pcb.setState(PCB.READY);
+            if (allocateMemoryAndResourcesForReady(pcb, "[创建队列]")) {
                 it.remove();
-                readyQueue.add(pcb);
-                System.out.println("[创建队列] PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]");
             }
         }
+    }
+
+    private boolean allocateMemoryAndResourcesForReady(PCB pcb, String source) {
+        if (!memoryService.allocateMemory(pcb.getPid(), pcb.getMemoryNeed())) {
+            return false;
+        }
+
+        pcb.setAllocatedMemory(pcb.getMemoryNeed());
+
+        if (resourceService.allocateResources(pcb)) {
+            pcb.setState(PCB.READY);
+            readyQueue.add(pcb);
+            System.out.println(source + " PID=" + pcb.getPid() + " 内存和资源分配成功，进入 [就绪队列]");
+            return true;
+        }
+
+        memoryService.releaseMemory(pcb.getPid());
+        pcb.setAllocatedMemory(0);
+        pcb.setState(PCB.BLOCK);
+        blockQueue.add(pcb);
+        System.out.println(source + " PID=" + pcb.getPid() + " 内存可分配但ABC资源暂时不足，进入 [阻塞队列]");
+        return true;
     }
 
     private void checkBlockQueueForResources() {
@@ -242,6 +316,11 @@ public class SchedulerServiceImpl implements SchedulerService {
     }
 
     @Override
+    public List<PCB> getPendingQueue() {
+        return pendingQueue;
+    }
+
+    @Override
     public List<PCB> getReadyQueue() {
         return readyQueue;
     }
@@ -276,6 +355,7 @@ public class SchedulerServiceImpl implements SchedulerService {
         currentTime = 0;
         timeSliceCounter = 0;
         runningProcess = null;
+        pendingQueue.clear();
         jobQueue.clear();
         readyQueue.clear();
         blockQueue.clear();
@@ -397,7 +477,20 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     @Override
     public boolean cancelProcess(int pid) {
-        // 1. 检查是否在创建队列
+        // 1. 检查是否在待提交队列
+        var pendingIt = pendingQueue.iterator();
+        while (pendingIt.hasNext()) {
+            PCB pcb = pendingIt.next();
+            if (pcb.getPid() == pid) {
+                pendingIt.remove();
+                pcb.setState(PCB.DEAD);
+                deadQueue.add(pcb);
+                System.out.println("[撤销] PID=" + pid + " 从待提交队列中撤销，进入 [终止队列]");
+                return true;
+            }
+        }
+
+        // 2. 检查是否在创建队列
         var jobIt = jobQueue.iterator();
         while (jobIt.hasNext()) {
             PCB pcb = jobIt.next();
@@ -410,7 +503,7 @@ public class SchedulerServiceImpl implements SchedulerService {
             }
         }
 
-        // 2. 检查是否在就绪队列
+        // 3. 检查是否在就绪队列
         var readyIt = readyQueue.iterator();
         while (readyIt.hasNext()) {
             PCB pcb = readyIt.next();
@@ -425,7 +518,7 @@ public class SchedulerServiceImpl implements SchedulerService {
             }
         }
 
-        // 3. 检查是否在阻塞队列
+        // 4. 检查是否在阻塞队列
         var blockIt = blockQueue.iterator();
         while (blockIt.hasNext()) {
             PCB pcb = blockIt.next();
@@ -440,7 +533,7 @@ public class SchedulerServiceImpl implements SchedulerService {
             }
         }
 
-        // 4. 检查是否是当前运行的进程
+        // 5. 检查是否是当前运行的进程
         if (runningProcess != null && runningProcess.getPid() == pid) {
             resourceService.releaseCpu();
             memoryService.releaseMemory(pid);

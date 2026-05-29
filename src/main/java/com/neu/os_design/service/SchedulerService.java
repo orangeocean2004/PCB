@@ -9,10 +9,16 @@ public interface SchedulerService {
     //
     PCB submitProcess(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed);
 
+    // 定时提交进程：submitTime 表示进程实际进入系统的模拟时钟
+    PCB submitProcessAt(int submitTime, String submitClock,
+                        int totalTime, int priority, int needA, int needB, int needC, int memoryNeed);
+
     // 模拟系统时钟滴答，触发调度器进行调度
     void systemTick();
 
     // 获取当前正在运行的进程，各个队列的进程列表，以及当前系统时间，供前端展示
+    List<PCB> getPendingQueue(); // 待提交队列
+
     List<PCB> getJobQueue();   // 创建态队列
 
     List<PCB> getReadyQueue();  // 就绪态队列

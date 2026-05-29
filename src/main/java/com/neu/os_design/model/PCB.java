@@ -13,7 +13,8 @@ import java.util.concurrent.Semaphore;
 public class PCB {
 
     // ==== 进程状态常量定义 ====
-    //  1 - 创建 2 - 就绪 3 - 阻塞 4 - 运行 5 - 终止
+    // -1 - 待提交 0 - 创建 1 - 就绪 2 - 阻塞 3 - 运行 4 - 终止
+    public static final int SCHEDULED = -1;
     public static final int CREATED = 0;
     public static final int READY = 1;
     public static final int BLOCK = 2;
@@ -61,6 +62,7 @@ public class PCB {
     private int waitingTime = 0;
     private int turnaroundTime = 0;
     private double responseRatio = 1.0;
+    private String submitClock;
 
 
     public PCB(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed, int currentTime) {
@@ -124,6 +126,7 @@ public class PCB {
 
     public String getStateString() {
         switch (this.state) {
+            case SCHEDULED: return "待提交";
             case CREATED: return "创建态";
             case READY: return "就绪态";
             case BLOCK: return "阻塞态";

@@ -255,28 +255,45 @@ public class SchedulerIntegrationTest {
     @Test
     @DisplayName("调度：资源不足时进程应进入阻塞队列")
     void testResourceInsufficientBlocksProcess() {
-        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
-        resourceService.resetResources(1, 1, 1); // 少量资源
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);
+        resourceService.resetResources(5, 1, 1); // 总量够，但会被前一个进程占满
 
-        // 第一个进程需要少量资源能运行
-        schedulerService.submitProcess(3, 1, 1, 0, 0, 64);
+        // 第一个进程先拿满A资源并运行
+        PCB p1 = schedulerService.submitProcess(10, 1, 5, 0, 0, 64);
+        // 第二个进程需要同样的A资源，但只能等前一个释放
+        PCB p2 = schedulerService.submitProcess(3, 1, 5, 0, 0, 64);
 
-        // 第二个进程需要更多A资源
-        schedulerService.submitProcess(3, 1, 5, 0, 0, 64);
-
-        // 运行
-        schedulerService.systemTick(); // PID=1 获取资源并运行
+        for (int i = 0; i < 4; i++) {
+            schedulerService.systemTick();
+        }
 
         // PID=2 尝试获取资源失败，应进入阻塞队列
         List<PCB> blockQueue = schedulerService.getBlockQueue();
-        // 检查是否有进程因为资源不足进入阻塞
-        boolean hasBlocked = !blockQueue.isEmpty();
-        System.out.println("阻塞队列大小: " + blockQueue.size());
-        if (hasBlocked) {
-            System.out.println("阻塞进程PID: " + blockQueue.get(0).getPid()
-                    + " 需要A=" + blockQueue.get(0).getNeedA()
-                    + " 已获得A=" + blockQueue.get(0).getGetA());
-        }
+        assertTrue(blockQueue.contains(p2));
+        assertEquals(PCB.BLOCK, p2.getState());
+    }
+
+    @Test
+    @DisplayName("调度：就绪队列不应超额占用系统总资源")
+    void testReadyQueueDoesNotOvercommitResources() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+        resourceService.resetResources(10, 10, 10);
+        memoryService.resetMemory(1024);
+
+        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 1, 900);
+        PCB p2 = schedulerService.submitProcess(5, 1, 9, 1, 1, 100);
+        PCB p3 = schedulerService.submitProcess(5, 1, 1, 1, 1, 200);
+
+        assertTrue(schedulerService.getReadyQueue().contains(p1),
+                "P1应持有资源并进入就绪队列");
+        assertTrue(schedulerService.getBlockQueue().contains(p2),
+                "P1已占用A=2后，P2再申请A=9会使合计超过A=10，应进入阻塞队列");
+        assertTrue(schedulerService.getJobQueue().contains(p3),
+                "P1占用900KB后，P3申请200KB内存不足，应进入创建队列");
+        assertEquals(8, resourceService.getAvailableA(),
+                "就绪队列中只应有P1占用A=2，系统剩余A=8");
+        assertEquals(900, memoryService.getUsedMemory(),
+                "P2资源不足时应释放刚分配的内存，当前只保留P1的900KB");
     }
 
     @Test
@@ -921,6 +938,52 @@ public class SchedulerIntegrationTest {
                 "所有提交的进程都应该在deadQueue中");
     }
 
+    @Test
+    @DisplayName("定时提交：未来进程到达提交时间后才进入系统")
+    void testScheduledProcessArrivesAtSubmitTime() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+
+        PCB p1 = schedulerService.submitProcessAt(0, null, 3, 1, 0, 0, 0, 64);
+        PCB p2 = schedulerService.submitProcessAt(20, null, 3, 1, 0, 0, 0, 64);
+
+        assertTrue(schedulerService.getReadyQueue().contains(p1),
+                "当前时间提交的进程应立即进入就绪队列");
+        assertTrue(schedulerService.getPendingQueue().contains(p2),
+                "未来提交时间的进程应先进入待提交队列");
+
+        for (int i = 0; i < 19; i++) {
+            schedulerService.systemTick();
+        }
+
+        assertTrue(schedulerService.getPendingQueue().contains(p2),
+                "T=19 时，T=20 对应的进程还不应进入系统");
+
+        schedulerService.systemTick(); // T=20, p2 到达
+
+        boolean admitted = schedulerService.getReadyQueue().contains(p2)
+                || schedulerService.getJobQueue().contains(p2)
+                || schedulerService.getBlockQueue().contains(p2)
+                || schedulerService.getRunningProcess() == p2;
+        assertFalse(schedulerService.getPendingQueue().contains(p2),
+                "到达提交时间后进程应离开待提交队列");
+        assertTrue(admitted, "到达提交时间后进程应进入系统内的某个活动位置");
+        assertEquals(20, p2.getArrivalTime());
+        assertNull(p2.getSubmitClock());
+    }
+
+    @Test
+    @DisplayName("定时提交：resetClock 清空待提交队列")
+    void testResetClockClearsPendingQueue() {
+        schedulerService.submitProcessAt(10, null, 5, 1, 0, 0, 0, 64);
+
+        assertEquals(1, schedulerService.getPendingQueue().size());
+
+        schedulerService.resetClock();
+
+        assertTrue(schedulerService.getPendingQueue().isEmpty(),
+                "resetClock 应清空待提交队列");
+    }
+
     // ==================== 手动/自动资源分配模式测试 ====================
 
     @Test
@@ -977,10 +1040,10 @@ public class SchedulerIntegrationTest {
     @DisplayName("手动模式：资源不足时dispatchResources保留进程在创建队列")
     void testManualDispatchPartialFailure() {
         schedulerService.setResourceDispatchMode(true);
-        resourceService.resetResources(1, 10, 10); // A只有1个
+        resourceService.resetResources(2, 10, 10); // 总A=2，但会被先分配的进程占用
 
-        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 0, 64); // 需要A=2，不够
-        PCB p2 = schedulerService.submitProcess(5, 1, 1, 0, 0, 64); // 需要A=1，够
+        PCB p2 = schedulerService.submitProcess(5, 1, 1, 0, 0, 64); // 先分配，占用A=1
+        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 0, 64); // 总量可满足，但当前剩余A=1不够
 
         schedulerService.dispatchResources();
 
@@ -1135,14 +1198,14 @@ public class SchedulerIntegrationTest {
     @Test
     @DisplayName("Cancel：撤销阻塞队列中的进程")
     void testCancelBlockedProcess() {
-        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
-        resourceService.resetResources(1, 10, 10);
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);
+        resourceService.resetResources(2, 10, 10);
 
-        PCB p1 = schedulerService.submitProcess(3, 1, 1, 0, 0, 64);
-        PCB p2 = schedulerService.submitProcess(3, 1, 2, 0, 0, 64); // A不够，会阻塞
+        PCB p1 = schedulerService.submitProcess(10, 1, 2, 0, 0, 64);
+        PCB p2 = schedulerService.submitProcess(3, 1, 1, 0, 0, 64); // A会暂时不够
 
         // 运行让p2尝试调度，资源不足→阻塞
-        for (int i = 0; i < 5; i++) {
+        for (int i = 0; i < 4; i++) {
             schedulerService.systemTick();
         }
 
@@ -1265,11 +1328,10 @@ public class SchedulerIntegrationTest {
     @DisplayName("Wakeup：无资源的进程唤醒失败")
     void testWakeupFailsWithoutResources() {
         schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
-        resourceService.resetResources(0, 10, 10); // A=0，绝对不够
 
-        // 创建一个资源不足的进程，调度时资源不足→进入阻塞，且资源不会被分配
-        PCB pcb = schedulerService.submitProcess(5, 1, 5, 0, 0, 64);
-        schedulerService.systemTick(); // 调度尝试→失败→阻塞
+        PCB pcb = new PCB(5, 1, 0, 0, 0, 64, 0);
+        pcb.setState(PCB.BLOCK);
+        schedulerService.getBlockQueue().add(pcb);
 
         // 确认在阻塞队列
         assertTrue(schedulerService.getBlockQueue().contains(pcb),
@@ -1285,6 +1347,20 @@ public class SchedulerIntegrationTest {
         assertFalse(result, "无资源的进程唤醒应失败");
         assertTrue(schedulerService.getBlockQueue().contains(pcb),
                 "唤醒失败应保留在阻塞队列");
+    }
+
+    @Test
+    @DisplayName("调度：超过系统总资源上限的进程应在提交阶段被拒绝")
+    void testProcessExceedingSystemCapacityRejected() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+
+        assertThrows(IllegalArgumentException.class,
+                () -> schedulerService.submitProcess(5, 1, 11, 1, 1, 64));
+
+        assertTrue(schedulerService.getReadyQueue().isEmpty());
+        assertTrue(schedulerService.getJobQueue().isEmpty());
+        assertTrue(schedulerService.getBlockQueue().isEmpty());
+        assertTrue(schedulerService.getDeadQueue().isEmpty());
     }
 
     @Test

@@ -10,6 +10,9 @@ public interface SystemResourceService {
     // 检查系统剩余资源是否足够供应给该进程
     boolean checkResourcesEnough(PCB pcb);
 
+    // 检查进程请求是否没有超过系统总资源上限
+    boolean checkResourcesWithinTotal(int needA, int needB, int needC);
+
     // 为这个进程分配所需的 ABC 资源
     // @return true 成功 false 失败
     boolean allocateResources(PCB pcb);
@@ -30,4 +33,9 @@ public interface SystemResourceService {
     int getAvailableA();
     int getAvailableB();
     int getAvailableC();
+
+    // 查询系统资源总量
+    int getTotalA();
+    int getTotalB();
+    int getTotalC();
 }

@@ -30,6 +30,14 @@
 
     <hr>
 
+    <h3>批量提交</h3>
+    <div class="form-group">
+      <textarea id="batchInput" class="batch-input" placeholder="# 虚拟提交时间 总时长 优先级 A B C 内存&#10;0 5 1 0 0 0 64&#10;10 3 2 1 0 0 128"></textarea>
+    </div>
+    <button class="btn btn-primary btn-full" onclick="submitBatch()">批量提交</button>
+
+    <hr>
+
     <h3>调度算法</h3>
     <select id="algoSelect" onchange="setAlgorithm(this.value)">
       <option value="1">FCFS - 先来先服务</option>
@@ -70,6 +78,13 @@
     <div class="running-card" id="runningCard">
       <h3>当前运行进程</h3>
       <div id="runningInfo" class="idle">CPU 空闲</div>
+    </div>
+
+    <div class="queue-section single">
+      <div class="queue-panel">
+        <h4>待提交队列 <span class="count" id="pendingCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>提交时间</th><th>总时长</th><th>优先级</th><th>内存</th><th>A/B/C需</th><th>操作</th></tr></thead><tbody id="pendingBody"></tbody></table>
+      </div>
     </div>
 
     <div class="queue-section">

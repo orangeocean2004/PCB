@@ -30,6 +30,7 @@ function renderRunningProcess(rp) {
 }
 
 function renderQueues(data) {
+  renderQueue('pendingBody', data.pendingQueue || [], 'pending', 'pendingCount');
   renderQueue('readyBody', data.readyQueue, 'ready', 'readyCount');
   renderQueue('blockBody', data.blockQueue, 'block', 'blockCount');
   renderQueue('jobBody', data.jobQueue, 'job', 'jobCount');
@@ -43,6 +44,19 @@ function renderQueue(tbodyId, queue, type, countId) {
   if (queue.length === 0) {
     const cols = tbody.parentElement.querySelector('thead tr').children.length;
     tbody.innerHTML = `<tr><td colspan="${cols}" class="empty-row">空</td></tr>`;
+    return;
+  }
+
+  if (type === 'pending') {
+    tbody.innerHTML = queue.map(p => `<tr>
+      <td><b>PID=${p.pid}</b></td>
+      <td>${formatSubmitTime(p)}</td>
+      <td>${p.totalTime}</td>
+      <td>${p.priority}</td>
+      <td>${p.memoryNeed}KB</td>
+      <td>${p.needA}/${p.needB}/${p.needC}</td>
+      <td><div class="process-actions"><button class="btn btn-danger btn-sm" onclick="cancel(${p.pid})">X</button></div></td>
+    </tr>`).join('');
     return;
   }
 
@@ -66,6 +80,10 @@ function renderQueue(tbodyId, queue, type, countId) {
 
     return `<tr>${cols}</tr>`;
   }).join('');
+}
+
+function formatSubmitTime(p) {
+  return `T=${p.arrivalTime}`;
 }
 
 function renderRunningActions(data) {

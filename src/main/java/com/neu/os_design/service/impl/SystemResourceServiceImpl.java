@@ -8,6 +8,10 @@ import java.util.concurrent.Semaphore;
 
 @Service
 public class SystemResourceServiceImpl implements SystemResourceService {
+    private int totalA = 10;
+    private int totalB = 10;
+    private int totalC = 10;
+
     // 默认三种资源初始数量为10
     private Semaphore resourceA = new Semaphore(10);
     private Semaphore resourceB = new Semaphore(10);
@@ -19,6 +23,9 @@ public class SystemResourceServiceImpl implements SystemResourceService {
     @Override
     public void resetResources(int initA, int initB, int initC) {
         // 重置信号量 仅用于初始化使用
+        totalA = initA;
+        totalB = initB;
+        totalC = initC;
         resourceA = new Semaphore(initA);
         resourceB = new Semaphore(initB);
         resourceC = new Semaphore(initC);
@@ -36,6 +43,11 @@ public class SystemResourceServiceImpl implements SystemResourceService {
         return resourceA.availablePermits() >= remainingA &&
                 resourceB.availablePermits() >= remainingB &&
                 resourceC.availablePermits() >= remainingC;
+    }
+
+    @Override
+    public boolean checkResourcesWithinTotal(int needA, int needB, int needC) {
+        return needA <= totalA && needB <= totalB && needC <= totalC;
     }
 
     // P
@@ -128,6 +140,21 @@ public class SystemResourceServiceImpl implements SystemResourceService {
     @Override
     public int getAvailableC() {
         return resourceC.availablePermits();
+    }
+
+    @Override
+    public int getTotalA() {
+        return totalA;
+    }
+
+    @Override
+    public int getTotalB() {
+        return totalB;
+    }
+
+    @Override
+    public int getTotalC() {
+        return totalC;
     }
 
 }
