@@ -274,26 +274,37 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
-    @DisplayName("调度：就绪队列不应超额占用系统总资源")
+    @DisplayName("调度：资源应在运行态申请且不应超额占用系统总资源")
     void testReadyQueueDoesNotOvercommitResources() {
-        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);
         resourceService.resetResources(10, 10, 10);
         memoryService.resetMemory(1024);
 
-        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 1, 900);
+        PCB p1 = schedulerService.submitProcess(10, 1, 2, 1, 1, 900);
         PCB p2 = schedulerService.submitProcess(5, 1, 9, 1, 1, 100);
         PCB p3 = schedulerService.submitProcess(5, 1, 1, 1, 1, 200);
 
         assertTrue(schedulerService.getReadyQueue().contains(p1),
-                "P1应持有资源并进入就绪队列");
-        assertTrue(schedulerService.getBlockQueue().contains(p2),
-                "P1已占用A=2后，P2再申请A=9会使合计超过A=10，应进入阻塞队列");
+                "P1应先只分配内存并进入就绪队列");
+        assertTrue(schedulerService.getReadyQueue().contains(p2),
+                "P2提交时也应只分配内存并进入就绪队列");
         assertTrue(schedulerService.getJobQueue().contains(p3),
-                "P1占用900KB后，P3申请200KB内存不足，应进入创建队列");
+                "P1+P2已占用1000KB后，P3申请200KB内存不足，应进入创建队列");
+        assertEquals(10, resourceService.getAvailableA(),
+                "提交阶段不应占用A资源");
+        assertEquals(1000, memoryService.getUsedMemory(),
+                "提交阶段只应占用已进入内存的P1和P2");
+
+        for (int i = 0; i < 4; i++) {
+            schedulerService.systemTick();
+        }
+
+        assertTrue(schedulerService.getBlockQueue().contains(p2),
+                "P1运行态占用A=2后，P2运行态申请A=9应因剩余A=8不足而阻塞");
         assertEquals(8, resourceService.getAvailableA(),
-                "就绪队列中只应有P1占用A=2，系统剩余A=8");
-        assertEquals(900, memoryService.getUsedMemory(),
-                "P2资源不足时应释放刚分配的内存，当前只保留P1的900KB");
+                "只有P1应持有A=2，系统剩余A=8");
+        assertEquals(1000, memoryService.getUsedMemory(),
+                "资源阻塞不应释放内存，P1和P2仍保留在内存中");
     }
 
     @Test
@@ -984,185 +995,6 @@ public class SchedulerIntegrationTest {
                 "resetClock 应清空待提交队列");
     }
 
-    // ==================== 手动/自动资源分配模式测试 ====================
-
-    @Test
-    @DisplayName("手动模式：默认是自动模式")
-    void testDefaultAutoMode() {
-        assertFalse(schedulerService.isManualDispatchMode(),
-                "默认应为自动模式");
-    }
-
-    @Test
-    @DisplayName("手动模式：submitProcess将进程放入创建队列而非就绪")
-    void testManualModeSubmitGoesToJobQueue() {
-        schedulerService.setResourceDispatchMode(true);
-
-        PCB pcb = schedulerService.submitProcess(5, 1, 2, 1, 0, 64);
-
-        // 应该在创建队列，不在就绪队列
-        assertTrue(schedulerService.getJobQueue().contains(pcb),
-                "手动模式下进程应进入创建队列");
-        assertFalse(schedulerService.getReadyQueue().contains(pcb),
-                "手动模式下进程不应在就绪队列");
-        assertEquals(PCB.CREATED, pcb.getState(),
-                "手动模式下进程状态应为CREATED");
-    }
-
-    @Test
-    @DisplayName("手动模式：dispatchResources 成功分配资源并移入就绪")
-    void testManualDispatchSuccess() {
-        schedulerService.setResourceDispatchMode(true);
-
-        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 0, 64);
-        PCB p2 = schedulerService.submitProcess(5, 1, 1, 0, 0, 64);
-
-        assertEquals(2, schedulerService.getJobQueue().size());
-        assertEquals(0, schedulerService.getReadyQueue().size());
-
-        // 手动触发分配
-        schedulerService.dispatchResources();
-
-        // 资源充足，两个都应该成功转入就绪
-        assertEquals(0, schedulerService.getJobQueue().size(),
-                "分配成功后创建队列应为空");
-        assertEquals(2, schedulerService.getReadyQueue().size(),
-                "分配成功后两个进程应在就绪队列");
-        assertEquals(PCB.READY, p1.getState());
-        assertEquals(PCB.READY, p2.getState());
-        assertTrue(p1.getAllocatedMemory() >= 64,
-                "内存应已分配");
-        assertTrue(p1.getGetA() >= 2,
-                "资源A应已分配");
-    }
-
-    @Test
-    @DisplayName("手动模式：资源不足时dispatchResources保留进程在创建队列")
-    void testManualDispatchPartialFailure() {
-        schedulerService.setResourceDispatchMode(true);
-        resourceService.resetResources(2, 10, 10); // 总A=2，但会被先分配的进程占用
-
-        PCB p2 = schedulerService.submitProcess(5, 1, 1, 0, 0, 64); // 先分配，占用A=1
-        PCB p1 = schedulerService.submitProcess(5, 1, 2, 1, 0, 64); // 总量可满足，但当前剩余A=1不够
-
-        schedulerService.dispatchResources();
-
-        // p2应该成功，p1应该还在创建队列
-        assertEquals(1, schedulerService.getJobQueue().size(),
-                "资源不足的进程应留在创建队列");
-        assertTrue(schedulerService.getJobQueue().contains(p1),
-                "需要A=2的进程应留在创建队列");
-        assertEquals(1, schedulerService.getReadyQueue().size(),
-                "资源充足的进程应转入就绪");
-        assertTrue(schedulerService.getReadyQueue().contains(p2));
-
-        // p1的内存应该已经被回滚（dispatch尝试分配内存成功但ABC失败→回滚内存）
-        assertEquals(0, p1.getAllocatedMemory(),
-                "分配失败的进程内存应被回滚");
-    }
-
-    @Test
-    @DisplayName("手动模式：checkJobQueueForMemory 在手动模式下不自动分配")
-    void testManualModeNoAutoAllocation() {
-        schedulerService.setResourceDispatchMode(true);
-
-        schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
-        schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
-
-        assertEquals(2, schedulerService.getJobQueue().size());
-
-        // 执行tick，手动模式下不应该自动分配
-        schedulerService.systemTick();
-        schedulerService.systemTick();
-
-        assertEquals(2, schedulerService.getJobQueue().size(),
-                "手动模式下tick不应自动分配创建队列的进程");
-        assertEquals(0, schedulerService.getReadyQueue().size());
-    }
-
-    @Test
-    @DisplayName("手动模式：空队列dispatchResources不崩溃")
-    void testManualDispatchEmptyQueue() {
-        schedulerService.setResourceDispatchMode(true);
-        assertDoesNotThrow(() -> schedulerService.dispatchResources());
-    }
-
-    @Test
-    @DisplayName("手动模式：dispatchResources 完整生命周期 — 分配后可以调度运行")
-    void testManualDispatchFullLifecycle() {
-        schedulerService.setResourceDispatchMode(true);
-        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
-
-        PCB pcb = schedulerService.submitProcess(3, 1, 2, 1, 1, 64);
-        schedulerService.dispatchResources();
-
-        // 现在应该在就绪队列
-        assertEquals(1, schedulerService.getReadyQueue().size());
-        assertEquals(PCB.READY, pcb.getState());
-
-        // 运行tick，应该被调度
-        schedulerService.systemTick();
-        schedulerService.systemTick();
-        schedulerService.systemTick();
-        schedulerService.systemTick();
-
-        // 进程应完成
-        assertTrue(schedulerService.getDeadQueue().contains(pcb),
-                "手动分配后的进程应能正常运行完成");
-    }
-
-    @Test
-    @DisplayName("模式切换：手动→自动 立即触发创建队列分配")
-    void testSwitchManualToAutoTriggersAllocation() {
-        // 先手动模式，放入一堆进程到创建队列
-        schedulerService.setResourceDispatchMode(true);
-        schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
-        schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
-        assertEquals(2, schedulerService.getJobQueue().size());
-
-        // 切换到自动模式
-        schedulerService.setResourceDispatchMode(false);
-
-        // 切换时自动触发checkJobQueueForMemory，进程应转入就绪
-        assertEquals(0, schedulerService.getJobQueue().size(),
-                "切换到自动模式后创建队列应为空");
-        assertEquals(2, schedulerService.getReadyQueue().size(),
-                "切换后进程应全部进入就绪队列");
-    }
-
-    @Test
-    @DisplayName("模式切换：自动→手动→自动 反复切换不崩溃")
-    void testRepeatedModeSwitch() {
-        schedulerService.submitProcess(3, 1, 0, 0, 0, 64);
-
-        schedulerService.setResourceDispatchMode(true);
-        schedulerService.setResourceDispatchMode(false);
-        schedulerService.setResourceDispatchMode(true);
-        schedulerService.setResourceDispatchMode(false);
-
-        // 运行tick不应崩溃
-        for (int i = 0; i < 5; i++) {
-            schedulerService.systemTick();
-        }
-
-        assertTrue(schedulerService.getDeadQueue().size() > 0,
-                "反复切换模式后进程应正常完成");
-    }
-
-    @Test
-    @DisplayName("手动模式：resetClock 后模式恢复为自动（默认）")
-    void testResetClockResetsMode() {
-        schedulerService.setResourceDispatchMode(true);
-        schedulerService.resetClock();
-
-        // resetClock 应重置模式为自动
-        assertFalse(schedulerService.isManualDispatchMode(),
-                "resetClock后模式应恢复为自动");
-        schedulerService.submitProcess(3, 1, 0, 0, 0, 64);
-        assertTrue(schedulerService.getReadyQueue().size() > 0,
-                "resetClock后自动模式下进程应直接进入就绪队列");
-    }
-
     // ==================== Cancel/Block/Wakeup 测试 ====================
 
     @Test
@@ -1221,7 +1053,7 @@ public class SchedulerIntegrationTest {
     @Test
     @DisplayName("Cancel：撤销创建队列中的进程")
     void testCancelProcessInJobQueue() {
-        schedulerService.setResourceDispatchMode(true);
+        memoryService.resetMemory(32);
         PCB pcb = schedulerService.submitProcess(5, 1, 1, 0, 0, 64);
 
         assertTrue(schedulerService.getJobQueue().contains(pcb));
@@ -1325,13 +1157,15 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
-    @DisplayName("Wakeup：无资源的进程唤醒失败")
+    @DisplayName("Wakeup：资源不足的进程唤醒失败")
     void testWakeupFailsWithoutResources() {
         schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+        resourceService.resetResources(0, 10, 10);
 
-        PCB pcb = new PCB(5, 1, 0, 0, 0, 64, 0);
+        PCB pcb = new PCB(5, 1, 1, 0, 0, 64, 0);
+        pcb.setAllocatedMemory(64);
         pcb.setState(PCB.BLOCK);
-        schedulerService.getBlockQueue().add(pcb);
+        schedulerService.getBlockQueueA().add(pcb);
 
         // 确认在阻塞队列
         assertTrue(schedulerService.getBlockQueue().contains(pcb),
@@ -1342,9 +1176,9 @@ public class SchedulerIntegrationTest {
         assertEquals(0, pcb.getGetB());
         assertEquals(0, pcb.getGetC());
 
-        // 无资源时唤醒应失败
+        // 资源不足时唤醒应失败
         boolean result = schedulerService.wakeupProcess(pcb.getPid());
-        assertFalse(result, "无资源的进程唤醒应失败");
+        assertFalse(result, "资源不足的进程唤醒应失败");
         assertTrue(schedulerService.getBlockQueue().contains(pcb),
                 "唤醒失败应保留在阻塞队列");
     }

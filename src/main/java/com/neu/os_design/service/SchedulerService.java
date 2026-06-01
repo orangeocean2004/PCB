@@ -23,7 +23,14 @@ public interface SchedulerService {
 
     List<PCB> getReadyQueue();  // 就绪态队列
 
-    List<PCB> getBlockQueue();  // 阻塞态队列
+    // 获取完整的阻塞队列（为了兼容或统一查看）
+    List<PCB> getBlockQueue();
+
+    // =============== 新增的三个具体资源的阻塞队列 ===============
+    List<PCB> getBlockQueueA();
+    List<PCB> getBlockQueueB();
+    List<PCB> getBlockQueueC();
+    // =======================================================
 
     List<PCB> getDeadQueue();   // 终止态队列
 
@@ -47,16 +54,6 @@ public interface SchedulerService {
 
     // 重置时钟和所有队列，用于新一轮测试
     void resetClock();
-
-    // ==== 手动/自动资源分配模式 ====
-    // true=手动模式(进程进入创建队列，手动触发分配)
-    // false=自动模式(默认，提交时自动分配内存)
-    void setResourceDispatchMode(boolean manual);
-
-    boolean isManualDispatchMode();
-
-    // 手动触发一次资源分配：遍历创建队列，分配内存+ABC资源，成功则转入就绪
-    void dispatchResources();
 
     // ==== 进程操作 ====
     // 强制终止指定PID的进程，释放其全部资源，移入终止队列

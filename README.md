@@ -65,10 +65,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=runner
 
 下拉框切换 5 种算法：FCFS、SJF、HRRN、Priority、RR。
 
-### 手动/自动分配模式
+### 自动资源分配
 
-- **自动模式（默认）**：提交进程时自动分配内存，每个 tick 自动尝试把创建队列中的进程调入就绪队列
-- **手动模式**：进程提交后停在创建队列，点击 **手动分配** 按钮统一分配资源
+提交进程时只自动尝试分配内存，A/B/C 资源记录在 PCB 中，等进程被调度到运行态后自动申请。运行态资源申请失败的进程进入阻塞队列；内存不足的进程进入创建队列，并在后续 tick 中自动重试。
 
 ### 进程操作
 
@@ -96,8 +95,6 @@ mvn spring-boot:run -Dspring-boot.run.profiles=runner
 | POST | `/api/tick/{n}` | 推进 N 个时钟（上限 100） |
 | PUT | `/api/algorithm/{type}` | 切换调度算法 |
 | POST | `/api/reset` | 重置模拟 |
-| PUT | `/api/dispatch-mode` | 切换手动/自动模式 |
-| POST | `/api/dispatch` | 手动触发资源分配 |
 
 ---
 
@@ -252,7 +249,7 @@ Tick 12-13: P1 运行 (跑1) → 完成退出
 
 ### 案例 3：资源竞争 — 阻塞与自动唤醒
 
-系统初始 A=10，提交 3 个各需 A=5 的进程。前 2 个消耗完 A 资源，第 3 个因资源不足进入阻塞队列。等前面进程完成释放 A 后自动恢复。
+系统初始 A=10，提交 3 个各需 A=5 的进程。提交阶段只分配内存，进程运行时才申请 A 资源；前 2 个运行过的进程消耗完 A 资源，第 3 个被调度运行时因资源不足进入阻塞队列。等前面进程完成释放 A 后自动恢复。
 
 | 进程 | 总时长 | needA |
 |------|--------|-------|
@@ -262,7 +259,7 @@ Tick 12-13: P1 运行 (跑1) → 完成退出
 
 ```bash
 curl -s -X POST http://localhost:8080/api/reset
-curl -s -X PUT http://localhost:8080/api/algorithm/1
+curl -s -X PUT http://localhost:8080/api/algorithm/5
 
 # 一次提交 3 个各需 A=5 的进程
 for i in 1 2 3; do
@@ -271,9 +268,9 @@ for i in 1 2 3; do
     -d '{"totalTime":5, "needA":5}'
 done
 
-# 推进 4 tick 看初始状态
-curl -s -X POST http://localhost:8080/api/tick/4
-echo "=== 4 tick 后 ==="
+# 推进 7 tick，P1/P2已分别运行并持有A资源，P3运行态申请A失败后阻塞
+curl -s -X POST http://localhost:8080/api/tick/7
+echo "=== 7 tick 后 ==="
 curl -s http://localhost:8080/api/status | python3 -c "
 import sys,json; d=json.load(sys.stdin)
 rp=d['runningProcess']
@@ -289,55 +286,11 @@ import sys,json; d=json.load(sys.stdin)
 print(f'终止: {len(d[\"deadQueue\"])}个 阻塞: {len(d[\"blockQueue\"])}个')"
 ```
 
-**预期**：4 tick 后 P1 在运行（持 A=5），P2 在就绪（也持 A=5），A 剩余 0，P3 在阻塞队列。全部完成后 deadQueue=3，blockQueue=0，A 恢复为 10。
+**预期**：7 tick 后 P1 在运行（持 A=5），P2 在就绪（持 A=5），A 剩余 0，P3 在阻塞队列。全部完成后 deadQueue=3，blockQueue=0，A 恢复为 10。
 
 ---
 
-### 案例 4：手动分配模式
-
-在手动模式下，进程先堆积在创建队列，用户一键分配。
-
-```bash
-curl -s -X POST http://localhost:8080/api/reset
-
-# 切到手动模式
-curl -s -X PUT http://localhost:8080/api/dispatch-mode \
-  -H 'Content-Type: application/json' \
-  -d '{"manual":true}'
-
-# 提交 3 个进程（全部进入创建队列，不会自动分配）
-curl -s -X POST http://localhost:8080/api/processes \
-  -H 'Content-Type: application/json' \
-  -d '{"totalTime":5, "priority":3}'
-curl -s -X POST http://localhost:8080/api/processes \
-  -H 'Content-Type: application/json' \
-  -d '{"totalTime":3, "priority":1}'
-curl -s -X POST http://localhost:8080/api/processes \
-  -H 'Content-Type: application/json' \
-  -d '{"totalTime":7, "priority":2}'
-
-# 当前：创建队列=3，就绪队列=0
-curl -s http://localhost:8080/api/status | python3 -c "
-import sys,json; d=json.load(sys.stdin)
-print(f'创建队列={len(d[\"jobQueue\"])} 就绪队列={len(d[\"readyQueue\"])}')"
-
-# 手动触发分配 → 3个进程同时进入就绪队列
-curl -s -X POST http://localhost:8080/api/dispatch
-
-curl -s http://localhost:8080/api/status | python3 -c "
-import sys,json; d=json.load(sys.stdin)
-print(f'创建队列={len(d[\"jobQueue\"])} 就绪队列={len(d[\"readyQueue\"])}')"
-
-# 切到 Priority 算法（按优先级调度）看效果
-curl -s -X PUT http://localhost:8080/api/algorithm/4
-curl -s -X POST http://localhost:8080/api/tick/30
-```
-
-**预期**：分配前 jobQueue=3 readyQueue=0，分配后 jobQueue=0 readyQueue=3。Priority 算法下优先级最高的（priority=1 即 PID=2）最先执行。
-
----
-
-### 案例 5：阻塞与唤醒
+### 案例 4：阻塞与唤醒
 
 运行中的进程可以手动阻塞（保留资源，释放 CPU），稍后唤醒继续。
 
@@ -389,11 +342,12 @@ curl -s -X POST http://localhost:8080/api/tick/30
 ## 进程状态流转
 
 ```
-提交 → [创建态] → (内存+资源分配成功) → [就绪态] → (CPU调度) → [运行态] → (完成) → [终止态]
-                        ↑                                    ↓
-                        │                              (阻塞) ↓
-                        │                              [阻塞态]
-                        └──────────── (唤醒，需已持资源) ────┘
+提交 → [创建态] → (内存分配成功) → [就绪态] → (CPU调度) → [运行态] → (完成) → [终止态]
+                        ↑                                │   ↑
+                        │                                │   │ 资源申请成功
+                        │                        资源申请失败 │
+                        │                                ↓   │
+                        └────────────── (资源满足) ← [阻塞态]
 ```
 
 ---

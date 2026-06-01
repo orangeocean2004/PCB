@@ -63,12 +63,7 @@
     <hr>
 
     <h3>模式 & 重置</h3>
-    <label class="toggle-label">
-      <input type="checkbox" id="manualMode" onchange="toggleDispatchMode()">
-      <span id="modeLabel">手动分配模式 (当前: 自动)</span>
-    </label>
     <div class="btn-row" style="margin-top:8px">
-      <button class="btn btn-green" onclick="dispatchResources()" style="flex:1">手动分配</button>
       <button class="btn btn-gray" onclick="resetSim()" style="flex:1">重置</button>
     </div>
   </div>
@@ -95,6 +90,22 @@
       <div class="queue-panel">
         <h4>阻塞队列 <span class="count" id="blockCount">0</span></h4>
         <table><thead><tr><th>PID</th><th>总时长</th><th>已运行</th><th>优先级</th><th>A/B/C</th><th>操作</th></tr></thead><tbody id="blockBody"></tbody></table>
+      </div>
+    </div>
+
+    <!-- 中间三个小队列 -->
+    <div class="queue-section three-cols">
+      <div class="queue-panel">
+        <h4 class="block-title">缺 A <span class="count" id="blockACount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>需 A</th><th>操作</th></tr></thead><tbody id="blockABody"></tbody></table>
+      </div>
+      <div class="queue-panel">
+        <h4 class="block-title">缺 B <span class="count" id="blockBCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>需 B</th><th>操作</th></tr></thead><tbody id="blockBBody"></tbody></table>
+      </div>
+      <div class="queue-panel">
+        <h4 class="block-title">缺 C <span class="count" id="blockCCount">0</span></h4>
+        <table><thead><tr><th>PID</th><th>需 C</th><th>操作</th></tr></thead><tbody id="blockCBody"></tbody></table>
       </div>
     </div>
 

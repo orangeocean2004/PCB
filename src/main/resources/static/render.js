@@ -7,7 +7,6 @@ function renderStatus(data) {
   renderRunningActions(data);
   renderResources(data.resources);
   renderMemory(data.memory);
-  renderMode(data.manualDispatchMode);
 }
 
 function renderRunningProcess(rp) {
@@ -32,7 +31,15 @@ function renderRunningProcess(rp) {
 function renderQueues(data) {
   renderQueue('pendingBody', data.pendingQueue || [], 'pending', 'pendingCount');
   renderQueue('readyBody', data.readyQueue, 'ready', 'readyCount');
-  renderQueue('blockBody', data.blockQueue, 'block', 'blockCount');
+
+  // 保留总计的 BlockCount，但如果你觉得需要，也可以删除它，在此我们渲染拆分出来的三个A/B/C队列
+  document.getElementById('blockCount').textContent = (data.blockQueue || []).length;
+  renderQueue('blockBody', data.blockQueue, 'block', 'blockCount'); // 旧的，暂时保留兼容
+
+  renderQueue('blockABody', data.blockQueueA || [], 'blockA', 'blockACount');
+  renderQueue('blockBBody', data.blockQueueB || [], 'blockB', 'blockBCount');
+  renderQueue('blockCBody', data.blockQueueC || [], 'blockC', 'blockCCount');
+
   renderQueue('jobBody', data.jobQueue, 'job', 'jobCount');
   renderQueue('deadBody', data.deadQueue, 'dead', 'deadCount');
 }
@@ -62,9 +69,21 @@ function renderQueue(tbodyId, queue, type, countId) {
 
   tbody.innerHTML = queue.map(p => {
     let cols = `<td><b>PID=${p.pid}</b></td>`;
-    cols += `<td>${p.totalTime}</td>`;
+
+    if (type !== 'blockA' && type !== 'blockB' && type !== 'blockC') {
+        cols += `<td>${p.totalTime}</td>`;
+    }
+
     if (type === 'ready' || type === 'block') cols += `<td>${p.runningTime}</td>`;
-    cols += `<td>${p.priority}</td>`;
+
+    if (type === 'blockA') cols += `<td>${p.needA}</td>`;
+    if (type === 'blockB') cols += `<td>${p.needB}</td>`;
+    if (type === 'blockC') cols += `<td>${p.needC}</td>`;
+
+    if (type !== 'blockA' && type !== 'blockB' && type !== 'blockC') {
+        cols += `<td>${p.priority}</td>`;
+    }
+
     if (type === 'ready')  cols += `<td>${p.allocatedMemory}/${p.memoryNeed}KB</td>`;
     if (type === 'job')    cols += `<td>${p.memoryNeed}KB</td><td>${p.needA}/${p.needB}/${p.needC}</td>`;
     if (type === 'block')  cols += `<td>${p.getA}/${p.getB}/${p.getC}</td>`;
@@ -72,7 +91,7 @@ function renderQueue(tbodyId, queue, type, countId) {
 
     let actions = '<td><div class="process-actions">';
     actions += `<button class="btn btn-danger btn-sm" onclick="cancel(${p.pid})">X</button>`;
-    if (type === 'block') {
+    if (type === 'block' || type === 'blockA' || type === 'blockB' || type === 'blockC') {
       actions += `<button class="btn btn-sm green" onclick="wakeup(${p.pid})">唤醒</button>`;
     }
     actions += '</div></td>';
@@ -125,10 +144,4 @@ function renderMemory(mem) {
       : `PID=${b.occupantPid}: ${b.size}KB [${b.startAddress}-${b.startAddress + b.size - 1}]`;
     bar.appendChild(seg);
   });
-}
-
-function renderMode(manual) {
-  document.getElementById('manualMode').checked = manual;
-  document.getElementById('modeLabel').textContent = manual
-    ? '手动分配模式 (当前: 手动)' : '手动分配模式 (当前: 自动)';
 }
