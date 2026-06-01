@@ -56,6 +56,7 @@ public class SchedulerServiceImpl implements SchedulerService {
     @Override
     public PCB submitProcessAt(int submitTime, String submitClock,
                                int totalTime, int priority, int needA, int needB, int needC, int memoryNeed) {
+        validateMemoryNeed(memoryNeed);
         validateResourceCapacity(needA, needB, needC);
 
         int actualSubmitTime = Math.max(0, submitTime);
@@ -73,6 +74,16 @@ public class SchedulerServiceImpl implements SchedulerService {
 
         admitProcess(pcb);
         return pcb;
+    }
+
+    private void validateMemoryNeed(int memoryNeed) {
+        if (memoryNeed <= PCB.MAX_MEMORY_NEED) {
+            return;
+        }
+
+        String message = "内存需求超过系统上限: memoryNeed=" + memoryNeed + "KB/" + PCB.MAX_MEMORY_NEED + "KB";
+        System.out.println("[提交拒绝] " + message);
+        throw new IllegalArgumentException(message);
     }
 
     private void admitProcess(PCB pcb) {
@@ -119,13 +130,22 @@ public class SchedulerServiceImpl implements SchedulerService {
         // 3. 检查创建队列，有多余内存时自动调入就绪队列
         checkJobQueueForMemory();
 
-        // 4. CPU 上正在运行的进程的时间片、进度判断：跑完？时间片到了？
+        // 4. 抢占式优先级调度：新到达/新就绪的高优先级进程立即抢占
+        preemptRunningProcessIfNeeded();
+
+        // 5. CPU 上正在运行的进程的时间片、进度判断：跑完？时间片到了？
         manageRunningProcess();
 
-        // 5. 检查阻塞队列，有多余资源时自动调入就绪队列
+        // 6. 运行进程可能刚释放内存，立即重试创建队列，避免等到下一个 tick
+        checkJobQueueForMemory();
+
+        // 7. 检查阻塞队列，有多余资源时自动调入就绪队列
         checkBlockQueueForResources();
 
-        // 6. CPU 空闲就调度，调度后运行态自动申请资源
+        // 8. 被唤醒的高优先级进程也可以立即抢占
+        preemptRunningProcessIfNeeded();
+
+        // 9. CPU 空闲就调度，调度后运行态自动申请资源
         scheduleNextProcess();
     }
 
@@ -190,6 +210,28 @@ public class SchedulerServiceImpl implements SchedulerService {
                 System.out.println("[阻塞队列" + resourceName + "] PID=" + pcb.getPid() + " 资源分配成功，进入 [就绪队列]");
             }
         }
+    }
+
+    private void preemptRunningProcessIfNeeded() {
+        if (!(currentStrategy instanceof PreemptivePriority preemptivePriority)
+                || runningProcess == null
+                || readyQueue.isEmpty()) {
+            return;
+        }
+
+        PCB bestCandidate = currentStrategy.selectNextProcess(readyQueue);
+        if (bestCandidate == null || !preemptivePriority.hasHigherPriority(bestCandidate, runningProcess)) {
+            return;
+        }
+
+        System.out.println("[抢占] PID=" + bestCandidate.getPid() + " 优先级高于 PID="
+                + runningProcess.getPid() + "，当前进程回到 [就绪队列]");
+
+        resourceService.releaseCpu();
+        runningProcess.setState(PCB.READY);
+        readyQueue.add(runningProcess);
+        runningProcess = null;
+        timeSliceCounter = 0;
     }
 
     private void manageRunningProcess() {
@@ -389,6 +431,9 @@ public class SchedulerServiceImpl implements SchedulerService {
                 break;
             case SchedulerService.ALGO_RR:
                 this.currentStrategy = new RR();
+                break;
+            case SchedulerService.ALGO_PREEMPTIVE_PRIORITY:
+                this.currentStrategy = new PreemptivePriority();
                 break;
             default:
                 this.currentStrategy = new HRRN();

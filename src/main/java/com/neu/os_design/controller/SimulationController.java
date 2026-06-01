@@ -106,7 +106,10 @@ public class SimulationController {
         Integer submitTime = readOptionalInt(body, "submitTime");
         String submitClock = normalizeClock(readString(body, "submitClock", null));
 
-        String invalidMessage = validateResourceCapacity(needA, needB, needC);
+        String invalidMessage = validateMemoryNeed(memoryNeed);
+        if (invalidMessage == null) {
+            invalidMessage = validateResourceCapacity(needA, needB, needC);
+        }
         if (invalidMessage != null) {
             Map<String, Object> result = new LinkedHashMap<>();
             result.put("success", false);
@@ -138,7 +141,10 @@ public class SimulationController {
             Integer submitTime = readOptionalInt(item, "submitTime");
             String submitClock = normalizeClock(readString(item, "submitClock", null));
 
-            String invalidMessage = validateResourceCapacity(needA, needB, needC);
+            String invalidMessage = validateMemoryNeed(memoryNeed);
+            if (invalidMessage == null) {
+                invalidMessage = validateResourceCapacity(needA, needB, needC);
+            }
             if (invalidMessage != null) {
                 Map<String, Object> rejectedItem = new LinkedHashMap<>();
                 rejectedItem.put("index", index);
@@ -311,5 +317,13 @@ public class SimulationController {
         return "资源请求超过系统总量: A=" + needA + "/" + resourceService.getTotalA()
                 + ", B=" + needB + "/" + resourceService.getTotalB()
                 + ", C=" + needC + "/" + resourceService.getTotalC();
+    }
+
+    private String validateMemoryNeed(int memoryNeed) {
+        if (memoryNeed <= PCB.MAX_MEMORY_NEED) {
+            return null;
+        }
+
+        return "内存需求超过系统上限: " + memoryNeed + "KB/" + PCB.MAX_MEMORY_NEED + "KB";
     }
 }

@@ -346,6 +346,37 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
+    @DisplayName("调度：进程完成释放内存后同一tick接纳创建队列进程")
+    void testJobQueueAdmittedImmediatelyAfterMemoryRelease() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
+        memoryService.resetMemory(1024);
+
+        PCB p1 = schedulerService.submitProcess(2, 1, 0, 0, 0, 900);
+        PCB p2 = schedulerService.submitProcess(8, 1, 0, 0, 0, 100);
+        PCB p3 = schedulerService.submitProcess(3, 1, 0, 0, 0, 200);
+
+        assertTrue(schedulerService.getReadyQueue().contains(p1));
+        assertTrue(schedulerService.getReadyQueue().contains(p2));
+        assertTrue(schedulerService.getJobQueue().contains(p3));
+        assertEquals(1000, memoryService.getUsedMemory());
+
+        schedulerService.systemTick(); // T=1, P1 被调度运行
+        schedulerService.systemTick(); // T=2, P1 runningTime=1
+        schedulerService.systemTick(); // T=3, P1 完成并释放内存，P3 应立即进入就绪队列
+
+        assertTrue(schedulerService.getDeadQueue().contains(p1));
+        assertFalse(schedulerService.getJobQueue().contains(p3),
+                "P1在T=3释放内存后，P3不应继续留在创建队列");
+        assertTrue(schedulerService.getReadyQueue().contains(p3),
+                "P3应在同一tick获得内存并进入就绪队列");
+        assertEquals(PCB.READY, p3.getState());
+        assertEquals(p2.getPid(), schedulerService.getRunningProcess().getPid(),
+                "FCFS下P2仍应先于P3运行");
+        assertEquals(300, memoryService.getUsedMemory(),
+                "P1释放后只剩P2(100KB)+P3(200KB)占用内存");
+    }
+
+    @Test
     @DisplayName("调度：resetClock 清空所有队列并重置资源、内存、PID")
     void testResetClock() {
         PCB p1 = schedulerService.submitProcess(5, 1, 3, 2, 1, 64);
@@ -399,16 +430,18 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
-    @DisplayName("边界：PCB内存需求自动钳位")
-    void testMemoryNeedClamping() {
-        // PCB构造时，memoryNeed ≤ 0 → 默认为64; memoryNeed > 1024 → 钳位到1024
+    @DisplayName("边界：内存需求默认值与上限校验")
+    void testMemoryNeedBounds() {
+        // memoryNeed ≤ 0 → 默认为64; memoryNeed > 1024 → 提交阶段拒绝
         schedulerService.setAlgorithmType(SchedulerService.ALGO_FCFS);
 
         PCB pcb1 = schedulerService.submitProcess(5, 1, 0, 0, 0, 0);
-        assertEquals(64, pcb1.getMemoryNeed(), "memoryNeed=0应默认为64");
+        assertEquals(PCB.DEFAULT_MEMORY_NEED, pcb1.getMemoryNeed(), "memoryNeed=0应默认为64");
 
-        PCB pcb2 = schedulerService.submitProcess(5, 1, 0, 0, 0, 2000);
-        assertEquals(1024, pcb2.getMemoryNeed(), "memoryNeed>1024应钳位到1024");
+        IllegalArgumentException ex = assertThrows(IllegalArgumentException.class,
+                () -> schedulerService.submitProcess(5, 1, 0, 0, 0, 2000));
+        assertTrue(ex.getMessage().contains("内存需求超过系统上限"),
+                "memoryNeed>1024应在提交阶段被拒绝");
     }
 
     @Test
