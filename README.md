@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-一个 Java Spring Boot 实现的操作系统进程调度模拟器，支持 5 种调度算法、内存管理（Best Fit）、ABC 三类系统资源管理，提供 REST API 和 Web 前端。
+一个 Java Spring Boot 实现的操作系统进程调度模拟器，支持 6 种调度算法、内存管理（Best Fit）、ABC 三类系统资源管理，提供 REST API 和 Web 前端。
 
 ## 快速启动
 
@@ -26,7 +26,7 @@ mvn spring-boot:run
 mvn test -Dtest=SchedulerIntegrationTest
 ```
 
-65 个集成测试，覆盖调度算法、内存管理、资源分配、进程操作等场景。
+集成测试覆盖调度算法、内存管理、资源分配、进程操作等场景。
 
 ### 运行算法对比报告
 
@@ -34,7 +34,7 @@ mvn test -Dtest=SchedulerIntegrationTest
 mvn spring-boot:run -Dspring-boot.run.profiles=runner
 ```
 
-输出 5 种算法在"批量到达"和"错峰到达"两种场景下的周转时间对比表，以及内存管理（Best Fit）的暴力测试结果。
+输出 6 种算法在"批量到达"和"错峰到达"两种场景下的周转时间对比表，以及内存管理（Best Fit）的暴力测试结果。
 
 ---
 
@@ -63,7 +63,7 @@ mvn spring-boot:run -Dspring-boot.run.profiles=runner
 
 ### 调度算法
 
-下拉框切换 5 种算法：FCFS、SJF、HRRN、Priority、RR。
+下拉框切换 6 种算法：FCFS、SJF、HRRN、Priority、RR、Preemptive Priority。
 
 ### 自动资源分配
 
@@ -336,6 +336,7 @@ curl -s -X POST http://localhost:8080/api/tick/30
 | HRRN | 3 | 高响应比优先，响应比 = (等待+总时长)/总时长 | 否 |
 | Priority | 4 | 优先级调度，数值越小优先级越高 | 否 |
 | RR | 5 | 时间片轮转，时间片=3 tick，到点切回队尾 | 是 |
+| Preemptive Priority | 6 | 抢占式优先级调度，就绪队列出现更高优先级进程时抢占当前进程 | 是 |
 
 ---
 
@@ -368,12 +369,13 @@ src/main/java/com/neu/os_design/
 │   ├── SystemResourceService.java    # 资源管理接口
 │   └── strategy/
 │       ├── SchedulingStrategy.java   # 调度策略接口
-│       └── algorithm/                # 5种算法实现
+│       └── algorithm/                # 6种算法实现
 │           ├── FCFS.java
 │           ├── SJF.java
 │           ├── HRRN.java
 │           ├── Priority.java
-│           └── RR.java
+│           ├── RR.java
+│           └── PreemptivePriority.java
 ├── service/impl/
 │   ├── SchedulerServiceImpl.java     # 调度器实现
 │   ├── MemoryServiceImpl.java        # 内存管理实现（Best Fit）

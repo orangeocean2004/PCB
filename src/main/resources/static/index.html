@@ -45,6 +45,7 @@
       <option value="3" selected>HRRN - 高响应比优先</option>
       <option value="4">Priority - 优先级调度</option>
       <option value="5">RR - 时间片轮转</option>
+      <option value="6">Preemptive Priority - 抢占式优先级</option>
     </select>
 
     <hr>
@@ -116,7 +117,7 @@
       </div>
       <div class="queue-panel">
         <h4>终止队列 <span class="count" id="deadCount">0</span></h4>
-        <table><thead><tr><th>PID</th><th>总时长</th><th>周转</th><th>优先级</th><th>状态</th><th>操作</th></tr></thead><tbody id="deadBody"></tbody></table>
+        <table><thead><tr><th>PID</th><th>总时长</th><th>优先级</th><th>周转</th><th>状态</th><th>操作</th></tr></thead><tbody id="deadBody"></tbody></table>
       </div>
     </div>
 

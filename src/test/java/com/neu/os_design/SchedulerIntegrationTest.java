@@ -209,6 +209,29 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
+    @DisplayName("调度：抢占式优先级应抢占正在运行的低优先级进程")
+    void testPreemptivePriorityPreemptsRunningProcess() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_PREEMPTIVE_PRIORITY);
+
+        PCB pLowPrio = schedulerService.submitProcessAt(0, null, 10, 5, 0, 0, 0, 64);
+        PCB pHighPrio = schedulerService.submitProcessAt(2, null, 3, 1, 0, 0, 0, 64);
+
+        schedulerService.systemTick();
+        assertNotNull(schedulerService.getRunningProcess());
+        assertEquals(pLowPrio.getPid(), schedulerService.getRunningProcess().getPid());
+
+        schedulerService.systemTick();
+
+        PCB running = schedulerService.getRunningProcess();
+        assertNotNull(running, "高优先级进程到达后应被调度运行");
+        assertEquals(pHighPrio.getPid(), running.getPid(),
+                "priority 数值更小的进程应抢占当前运行进程");
+        assertTrue(schedulerService.getReadyQueue().contains(pLowPrio),
+                "被抢占的低优先级进程应回到就绪队列");
+        assertEquals(PCB.READY, pLowPrio.getState());
+    }
+
+    @Test
     @DisplayName("调度：RR 时间片轮转 — 时间片到期应切换")
     void testRoundRobinTimeSlice() {
         schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);
@@ -817,7 +840,7 @@ public class SchedulerIntegrationTest {
     // ==================== 算法切换压力测试 ====================
 
     @Test
-    @DisplayName("切换：运行中反复切换所有5种算法，不应崩溃")
+    @DisplayName("切换：运行中反复切换所有6种算法，不应崩溃")
     void testRapidAlgorithmSwitching() {
         int[] algos = {
             SchedulerService.ALGO_FCFS,
@@ -825,6 +848,7 @@ public class SchedulerIntegrationTest {
             SchedulerService.ALGO_HRRN,
             SchedulerService.ALGO_PRIORITY,
             SchedulerService.ALGO_RR,
+            SchedulerService.ALGO_PREEMPTIVE_PRIORITY,
         };
 
         // 提交一批进程
