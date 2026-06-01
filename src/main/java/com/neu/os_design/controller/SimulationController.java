@@ -36,7 +36,6 @@ public class SimulationController {
         status.put("currentTime", schedulerService.getCurrentTime());
         status.put("algorithmType", schedulerService.getAlgorithmType());
         status.put("algorithmName", schedulerService.getAlgorithmName());
-        status.put("manualDispatchMode", schedulerService.isManualDispatchMode());
 
         status.put("runningProcess", schedulerService.getRunningProcess());
         status.put("pendingQueue", schedulerService.getPendingQueue());
@@ -58,6 +57,15 @@ public class SimulationController {
         memory.put("maxAvailable", memoryService.getMaxAvailableMemory());
         memory.put("freePartitionCount", memoryService.getFreePartitionCount());
         status.put("memory", memory);
+
+        // 分拆的A、B、C阻塞队列（供前端拆分渲染）
+        List<PCB> blockQueueA = schedulerService.getBlockQueueA();
+        List<PCB> blockQueueB = schedulerService.getBlockQueueB();
+        List<PCB> blockQueueC = schedulerService.getBlockQueueC();
+
+        status.put("blockQueueA", blockQueueA);
+        status.put("blockQueueB", blockQueueB);
+        status.put("blockQueueC", blockQueueC);
 
         return ResponseEntity.ok(status);
     }
@@ -227,25 +235,6 @@ public class SimulationController {
         return ResponseEntity.ok(Map.of("message", "模拟已重置"));
     }
 
-    // ==================== 手动/自动模式 ====================
-
-    @PutMapping("/dispatch-mode")
-    public ResponseEntity<Map<String, Object>> setDispatchMode(@RequestBody Map<String, Boolean> body) {
-        boolean manual = body.getOrDefault("manual", false);
-        schedulerService.setResourceDispatchMode(manual);
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("manualDispatchMode", schedulerService.isManualDispatchMode());
-        return ResponseEntity.ok(result);
-    }
-
-    @PostMapping("/dispatch")
-    public ResponseEntity<Map<String, Object>> dispatchResources() {
-        schedulerService.dispatchResources();
-        Map<String, Object> result = new LinkedHashMap<>();
-        result.put("jobQueueSize", schedulerService.getJobQueue().size());
-        result.put("readyQueueSize", schedulerService.getReadyQueue().size());
-        return ResponseEntity.ok(result);
-    }
 
     private int readInt(Map<String, Object> body, String key, int defaultValue) {
         Integer value = readOptionalInt(body, key);

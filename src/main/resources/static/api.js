@@ -129,18 +129,6 @@ async function resetSimApi() {
   await fetch(API + '/reset', {method: 'POST'});
 }
 
-async function setDispatchModeApi(manual) {
-  await fetch(API + '/dispatch-mode', {
-    method: 'PUT',
-    headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({manual: manual})
-  });
-}
-
-async function dispatchResourcesApi() {
-  await fetch(API + '/dispatch', {method: 'POST'});
-}
-
 async function fetchStatus() {
   const res = await fetch(API + '/status');
   return res.json();

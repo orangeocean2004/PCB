@@ -12,10 +12,6 @@ function tickN() {
 }
 function setAlgorithm(type) { setAlgorithmApi(type).then(refresh); }
 function resetSim() { resetSimApi().then(refresh); }
-function toggleDispatchMode() {
-  setDispatchModeApi(document.getElementById('manualMode').checked).then(refresh);
-}
-function dispatchResources() { dispatchResourcesApi().then(refresh); }
 
 // ==================== 自动 tick ====================
 
