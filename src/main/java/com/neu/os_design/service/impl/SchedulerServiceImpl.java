@@ -125,6 +125,8 @@ public class SchedulerServiceImpl implements SchedulerService {
         // 5. 检查阻塞队列，有多余资源时自动调入就绪队列
         checkBlockQueueForResources();
 
+        preemptForHigherPriorityIfNeeded();
+
         // 6. CPU 空闲就调度，调度后运行态自动申请资源
         scheduleNextProcess();
     }
@@ -190,6 +192,28 @@ public class SchedulerServiceImpl implements SchedulerService {
                 System.out.println("[阻塞队列" + resourceName + "] PID=" + pcb.getPid() + " 资源分配成功，进入 [就绪队列]");
             }
         }
+    }
+
+    private void preemptForHigherPriorityIfNeeded() {
+        if (!(currentStrategy instanceof PreemptivePriority priorityStrategy)
+                || runningProcess == null
+                || readyQueue.isEmpty()) {
+            return;
+        }
+
+        PCB bestCandidate = currentStrategy.selectNextProcess(readyQueue);
+        if (bestCandidate == null || !priorityStrategy.hasHigherPriority(bestCandidate, runningProcess)) {
+            return;
+        }
+
+        System.out.println("[Preemptive Priority] PID=" + bestCandidate.getPid()
+                + " preempts PID=" + runningProcess.getPid());
+
+        resourceService.releaseCpu();
+        runningProcess.setState(PCB.READY);
+        readyQueue.add(runningProcess);
+        runningProcess = null;
+        timeSliceCounter = 0;
     }
 
     private void manageRunningProcess() {
@@ -389,6 +413,9 @@ public class SchedulerServiceImpl implements SchedulerService {
                 break;
             case SchedulerService.ALGO_RR:
                 this.currentStrategy = new RR();
+                break;
+            case SchedulerService.ALGO_PREEMPTIVE_PRIORITY:
+                this.currentStrategy = new PreemptivePriority();
                 break;
             default:
                 this.currentStrategy = new HRRN();

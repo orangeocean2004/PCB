@@ -44,8 +44,9 @@ public interface SchedulerService {
     int ALGO_HRRN = 3;     // 高响应比优先
     int ALGO_PRIORITY = 4; // 优先级调度
     int ALGO_RR = 5;       // 时间片轮转
+    int ALGO_PREEMPTIVE_PRIORITY = 6; // 抢占式优先级调度
 
-    // 选择调度算法 1 = FCFS 2 = SJF 3 = HRRN 4 = Priority 5 =RR
+    // 选择调度算法 1 = FCFS 2 = SJF 3 = HRRN 4 = Priority 5 = RR 6 = Preemptive Priority
     void setAlgorithmType(int algorithmType);
 
     // 查询当前调度算法类型和名称（供前端展示）

@@ -24,11 +24,12 @@ public class AlgorithmComparisonRunner implements CommandLineRunner {
         SchedulerService.ALGO_SJF,
         SchedulerService.ALGO_HRRN,
         SchedulerService.ALGO_PRIORITY,
-        SchedulerService.ALGO_RR
+        SchedulerService.ALGO_RR,
+        SchedulerService.ALGO_PREEMPTIVE_PRIORITY
     };
 
     private static final String[] ALGO_NAMES = {
-        "FCFS", "SJF ", "HRRN", "PRIO", "RR  "
+        "FCFS", "SJF ", "HRRN", "PRIO", "RR  ", "PPRI"
     };
 
     @Override
