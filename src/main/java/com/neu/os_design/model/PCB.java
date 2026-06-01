@@ -20,6 +20,8 @@ public class PCB {
     public static final int BLOCK = 2;
     public static final int RUNNING = 3;
     public static final int DEAD = 4;
+    public static final int DEFAULT_MEMORY_NEED = 64;
+    public static final int MAX_MEMORY_NEED = 1024;
 
     // ==== 临界资源与互斥锁 ====
     private static int pid_seq = 1;
@@ -82,11 +84,9 @@ public class PCB {
         this.needB = needB;
         this.needC = needC;
 
-        // 保证内存下限
+        // 保证内存下限；上限由提交入口校验并拒绝，避免悄悄钳位掩盖输入错误。
         if (memoryNeed <= 0) {
-            this.memoryNeed = 64;
-        } else if (memoryNeed > 1024) {
-            this.memoryNeed = 1024;
+            this.memoryNeed = DEFAULT_MEMORY_NEED;
         } else {
             this.memoryNeed = memoryNeed;
         }

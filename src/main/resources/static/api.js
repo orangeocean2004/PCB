@@ -1,4 +1,5 @@
 const API = '/api';
+const MAX_MEMORY_NEED = 1024;
 
 async function submitProcess() {
   const body = {
@@ -9,6 +10,8 @@ async function submitProcess() {
     needC: +document.getElementById('fNeedC').value,
     memoryNeed: +document.getElementById('fMemory').value
   };
+  validateMemoryNeed(body.memoryNeed, '内存需求');
+
   const res = await fetch(API + '/processes', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
@@ -74,6 +77,7 @@ function parseBatchLine(line) {
     needC: readBatchNumber(parts[5], 0),
     memoryNeed: readBatchNumber(parts[6], 64)
   };
+  validateMemoryNeed(process.memoryNeed, '批量提交内存需求');
 
   const clock = normalizeBatchClock(submitToken);
   if (clock) {
@@ -88,6 +92,11 @@ function parseBatchLine(line) {
 function readBatchNumber(value, fallback) {
   const number = Number.parseInt(value, 10);
   return Number.isFinite(number) ? number : fallback;
+}
+
+function validateMemoryNeed(memoryNeed, label) {
+  if (memoryNeed <= MAX_MEMORY_NEED) return;
+  throw new Error(label + '不能超过' + MAX_MEMORY_NEED + 'KB，当前输入' + memoryNeed + 'KB');
 }
 
 function normalizeBatchClock(value) {
