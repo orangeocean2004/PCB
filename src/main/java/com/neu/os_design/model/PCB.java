@@ -3,6 +3,8 @@ package com.neu.os_design.model;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.Semaphore;
 
 /**
@@ -11,6 +13,25 @@ import java.util.concurrent.Semaphore;
 @Data // 自动生成所有属性的 getter、setter、toString、equals、hashCode
 @NoArgsConstructor // 自动生成无参构造函数 (Spring/MyBatis 等框架通常需要)
 public class PCB {
+
+    /**
+     * 最简单的消息传递式 IPC：发送进程把文本消息投递到目标进程的收件箱。
+     */
+    @Data
+    @NoArgsConstructor
+    public static class IpcMessage {
+        private int fromPid;
+        private int toPid;
+        private String content;
+        private int sentTime;
+
+        public IpcMessage(int fromPid, int toPid, String content, int sentTime) {
+            this.fromPid = fromPid;
+            this.toPid = toPid;
+            this.content = content;
+            this.sentTime = sentTime;
+        }
+    }
 
     // ==== 进程状态常量定义 ====
     // -1 - 待提交 0 - 创建 1 - 就绪 2 - 阻塞 3 - 运行 4 - 终止
@@ -65,6 +86,7 @@ public class PCB {
     private int turnaroundTime = 0;
     private double responseRatio = 1.0;
     private String submitClock;
+    private final List<IpcMessage> inbox = new ArrayList<>();
 
 
     public PCB(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed, int currentTime) {
@@ -122,6 +144,14 @@ public class PCB {
         if (this.totalTime > 0) {
             this.responseRatio = (double) (this.waitingTime + this.totalTime) / this.totalTime;
         }
+    }
+
+    public void receiveMessage(IpcMessage message) {
+        this.inbox.add(message);
+    }
+
+    public void clearInbox() {
+        this.inbox.clear();
     }
 
     public String getStateString() {

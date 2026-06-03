@@ -122,6 +122,29 @@ async function wakeupProcess(pid) {
   await fetch(API + '/processes/' + pid + '/wakeup', {method: 'POST'});
 }
 
+async function sendIpcMessageApi(fromPid, toPid, content) {
+  const res = await fetch(API + '/ipc/messages', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({fromPid, toPid, content})
+  });
+
+  const result = await readJsonResponse(res);
+  if (!res.ok || !result.success) {
+    throw new Error(result.message || 'IPC消息发送失败');
+  }
+  return result;
+}
+
+async function clearIpcMessagesApi(pid) {
+  const res = await fetch(API + '/ipc/messages/' + pid, {method: 'DELETE'});
+  const result = await readJsonResponse(res);
+  if (!res.ok || !result.success) {
+    throw new Error(result.message || 'IPC收件箱清空失败');
+  }
+  return result;
+}
+
 async function tickApi() {
   await fetch(API + '/tick', {method: 'POST'});
 }

@@ -204,6 +204,56 @@ public class SimulationController {
         return ResponseEntity.ok(result);
     }
 
+    // ==================== 进程间通信 ====================
+
+    @PostMapping("/ipc/messages")
+    public ResponseEntity<Map<String, Object>> sendIpcMessage(@RequestBody Map<String, Object> body) {
+        int fromPid = readInt(body, "fromPid", -1);
+        int toPid = readInt(body, "toPid", -1);
+        String content = readString(body, "content", "");
+
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("fromPid", fromPid);
+        result.put("toPid", toPid);
+
+        if (fromPid <= 0 || toPid <= 0 || content.isBlank()) {
+            result.put("success", false);
+            result.put("message", "IPC消息发送失败：fromPid、toPid和content不能为空");
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        if (content.length() > 200) {
+            result.put("success", false);
+            result.put("message", "IPC消息发送失败：content不能超过200个字符");
+            return ResponseEntity.badRequest().body(result);
+        }
+
+        boolean success = schedulerService.sendMessage(fromPid, toPid, content);
+        result.put("success", success);
+        result.put("message", success ? "IPC消息已发送" : "IPC消息发送失败：进程不存在或不可通信");
+        return success ? ResponseEntity.ok(result) : ResponseEntity.badRequest().body(result);
+    }
+
+    @GetMapping("/ipc/messages/{pid}")
+    public ResponseEntity<Map<String, Object>> getIpcMessages(@PathVariable int pid) {
+        List<PCB.IpcMessage> messages = schedulerService.getMessages(pid);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("pid", pid);
+        result.put("count", messages.size());
+        result.put("messages", messages);
+        return ResponseEntity.ok(result);
+    }
+
+    @DeleteMapping("/ipc/messages/{pid}")
+    public ResponseEntity<Map<String, Object>> clearIpcMessages(@PathVariable int pid) {
+        boolean success = schedulerService.clearMessages(pid);
+        Map<String, Object> result = new LinkedHashMap<>();
+        result.put("success", success);
+        result.put("pid", pid);
+        result.put("message", success ? "IPC收件箱已清空" : "IPC收件箱清空失败：未找到进程");
+        return success ? ResponseEntity.ok(result) : ResponseEntity.badRequest().body(result);
+    }
+
     // ==================== 时钟推进 ====================
 
     @PostMapping("/tick")

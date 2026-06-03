@@ -5,6 +5,18 @@ function submitBatch() { submitBatchProcesses().then(refresh).catch(e => alert(e
 function cancel(pid) { cancelProcess(pid).then(refresh); }
 function block() { blockProcess().then(refresh); }
 function wakeup(pid) { wakeupProcess(pid).then(refresh); }
+function sendIpc() {
+  const fromPid = +document.getElementById('ipcFromPid').value;
+  const toPid = +document.getElementById('ipcToPid').value;
+  const contentEl = document.getElementById('ipcContent');
+  sendIpcMessageApi(fromPid, toPid, contentEl.value)
+    .then(() => {
+      contentEl.value = '';
+      refresh();
+    })
+    .catch(e => alert(e.message));
+}
+function clearIpc(pid) { clearIpcMessagesApi(pid).then(refresh).catch(e => alert(e.message)); }
 function tick() { tickApi().then(refresh); }
 function tickN() {
   const n = +document.getElementById('tickN').value || 5;

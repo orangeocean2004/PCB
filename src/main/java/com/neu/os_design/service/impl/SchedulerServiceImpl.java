@@ -582,4 +582,82 @@ public class SchedulerServiceImpl implements SchedulerService {
 
         return false;
     }
+
+    @Override
+    public boolean sendMessage(int fromPid, int toPid, String content) {
+        String messageText = content == null ? "" : content.trim();
+        if (messageText.isEmpty()) {
+            System.out.println("[IPC] 发送失败：消息内容为空");
+            return false;
+        }
+
+        PCB from = findProcessByPid(fromPid);
+        PCB to = findProcessByPid(toPid);
+        if (!canUseIpc(from) || !canUseIpc(to)) {
+            System.out.println("[IPC] 发送失败：发送方或接收方不存在，或进程不在可通信状态");
+            return false;
+        }
+
+        to.receiveMessage(new PCB.IpcMessage(fromPid, toPid, messageText, currentTime));
+        System.out.println("[IPC] PID=" + fromPid + " -> PID=" + toPid + " 消息: " + messageText);
+        return true;
+    }
+
+    @Override
+    public List<PCB.IpcMessage> getMessages(int pid) {
+        PCB pcb = findProcessByPid(pid);
+        if (pcb == null) {
+            return List.of();
+        }
+
+        return new LinkedList<>(pcb.getInbox());
+    }
+
+    @Override
+    public boolean clearMessages(int pid) {
+        PCB pcb = findProcessByPid(pid);
+        if (pcb == null) {
+            System.out.println("[IPC] 清空失败：未找到 PID=" + pid);
+            return false;
+        }
+
+        pcb.clearInbox();
+        System.out.println("[IPC] PID=" + pid + " 收件箱已清空");
+        return true;
+    }
+
+    private boolean canUseIpc(PCB pcb) {
+        return pcb != null && pcb.getState() != PCB.DEAD && pcb.getState() != PCB.SCHEDULED;
+    }
+
+    private PCB findProcessByPid(int pid) {
+        if (runningProcess != null && runningProcess.getPid() == pid) {
+            return runningProcess;
+        }
+
+        PCB found = findInQueue(jobQueue, pid);
+        if (found != null) return found;
+        found = findInQueue(readyQueue, pid);
+        if (found != null) return found;
+        found = findInQueue(blockQueueA, pid);
+        if (found != null) return found;
+        found = findInQueue(blockQueueB, pid);
+        if (found != null) return found;
+        found = findInQueue(blockQueueC, pid);
+        if (found != null) return found;
+        found = findInQueue(deadQueue, pid);
+        if (found != null) return found;
+
+        return findInQueue(pendingQueue, pid);
+    }
+
+    private PCB findInQueue(List<PCB> queue, int pid) {
+        for (PCB pcb : queue) {
+            if (pcb.getPid() == pid) {
+                return pcb;
+            }
+        }
+
+        return null;
+    }
 }

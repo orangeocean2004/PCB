@@ -2,7 +2,7 @@
 
 ## 项目简介
 
-一个 Java Spring Boot 实现的操作系统进程调度模拟器，支持 6 种调度算法、内存管理（Best Fit）、ABC 三类系统资源管理，提供 REST API 和 Web 前端。
+一个 Java Spring Boot 实现的操作系统进程调度模拟器，支持 6 种调度算法、内存管理（Best Fit）、ABC 三类系统资源管理、最小消息传递式 IPC，提供 REST API 和 Web 前端。
 
 ## 快速启动
 
@@ -26,7 +26,7 @@ mvn spring-boot:run
 mvn test -Dtest=SchedulerIntegrationTest
 ```
 
-集成测试覆盖调度算法、内存管理、资源分配、进程操作等场景。
+集成测试覆盖调度算法、内存管理、资源分配、进程操作、进程通信等场景。
 
 ### 运行算法对比报告
 
@@ -77,6 +77,12 @@ mvn spring-boot:run -Dspring-boot.run.profiles=runner
 - **阻塞**：暂停当前运行进程（保留内存和资源）
 - **唤醒**：恢复阻塞队列中的进程（需已持有资源）
 
+### 进程通信
+
+左侧 **进程通信** 区填写发送 PID、接收 PID 和消息内容，点击 **发送消息**。消息会进入接收进程的 IPC 收件箱，并在右侧 **IPC 消息** 表格中展示。
+
+该功能采用最小消息传递模型：发送方和接收方都必须是已进入系统且未终止的 PCB；消息不会影响调度，只用于模拟进程间传递文本数据。
+
 ---
 
 ## REST API 使用
@@ -91,6 +97,9 @@ mvn spring-boot:run -Dspring-boot.run.profiles=runner
 | DELETE | `/api/processes/{pid}` | 撤销进程 |
 | POST | `/api/processes/block` | 阻塞当前运行进程 |
 | POST | `/api/processes/{pid}/wakeup` | 唤醒阻塞进程 |
+| POST | `/api/ipc/messages` | 发送 IPC 消息 |
+| GET | `/api/ipc/messages/{pid}` | 查询指定进程的 IPC 收件箱 |
+| DELETE | `/api/ipc/messages/{pid}` | 清空指定进程的 IPC 收件箱 |
 | POST | `/api/tick` | 推进 1 个时钟 |
 | POST | `/api/tick/{n}` | 推进 N 个时钟（上限 100） |
 | PUT | `/api/algorithm/{type}` | 切换调度算法 |
@@ -359,9 +368,9 @@ curl -s -X POST http://localhost:8080/api/tick/30
 src/main/java/com/neu/os_design/
 ├── OsDesignApplication.java          # 入口
 ├── controller/
-│   └── SimulationController.java     # REST API（12个端点）
+│   └── SimulationController.java     # REST API（15个端点）
 ├── model/
-│   ├── PCB.java                      # 进程控制块
+│   ├── PCB.java                      # 进程控制块（含 IPC 收件箱）
 │   └── MemoryBlock.java              # 内存块
 ├── service/
 │   ├── SchedulerService.java         # 调度器接口

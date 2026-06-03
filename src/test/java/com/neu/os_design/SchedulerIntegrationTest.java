@@ -587,6 +587,42 @@ public class SchedulerIntegrationTest {
         assertEquals(1.5, pcb.getResponseRatio(), 0.01);
     }
 
+    // ==================== IPC 消息传递测试 ====================
+
+    @Test
+    @DisplayName("IPC：进程之间可以发送、接收和清空消息")
+    void testIpcMessagePassing() {
+        PCB sender = schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
+        PCB receiver = schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
+
+        assertTrue(schedulerService.sendMessage(sender.getPid(), receiver.getPid(), "hello ipc"));
+
+        List<PCB.IpcMessage> receiverMessages = schedulerService.getMessages(receiver.getPid());
+        assertEquals(1, receiverMessages.size());
+        PCB.IpcMessage message = receiverMessages.get(0);
+        assertEquals(sender.getPid(), message.getFromPid());
+        assertEquals(receiver.getPid(), message.getToPid());
+        assertEquals("hello ipc", message.getContent());
+        assertEquals(schedulerService.getCurrentTime(), message.getSentTime());
+        assertTrue(schedulerService.getMessages(sender.getPid()).isEmpty(),
+                "消息应只进入接收进程的收件箱");
+
+        assertTrue(schedulerService.clearMessages(receiver.getPid()));
+        assertTrue(schedulerService.getMessages(receiver.getPid()).isEmpty());
+    }
+
+    @Test
+    @DisplayName("IPC：空消息或不存在PID发送失败")
+    void testIpcSendFailureCases() {
+        PCB sender = schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
+        PCB receiver = schedulerService.submitProcess(5, 1, 0, 0, 0, 64);
+
+        assertFalse(schedulerService.sendMessage(sender.getPid(), receiver.getPid(), "   "));
+        assertFalse(schedulerService.sendMessage(sender.getPid(), 9999, "hello"));
+        assertFalse(schedulerService.sendMessage(9999, receiver.getPid(), "hello"));
+        assertTrue(schedulerService.getMessages(receiver.getPid()).isEmpty());
+    }
+
     // ==================== C++差异检测测试 ====================
 
     @Test

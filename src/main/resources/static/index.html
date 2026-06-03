@@ -38,6 +38,16 @@
 
     <hr>
 
+    <h3>进程通信</h3>
+    <div class="form-row">
+      <div class="form-group"><label>发送PID</label><input id="ipcFromPid" type="number" value="1" min="1"></div>
+      <div class="form-group"><label>接收PID</label><input id="ipcToPid" type="number" value="2" min="1"></div>
+    </div>
+    <div class="form-group"><label>消息内容</label><input id="ipcContent" type="text" maxlength="200" value="hello"></div>
+    <button class="btn btn-green btn-full" onclick="sendIpc()">发送消息</button>
+
+    <hr>
+
     <h3>调度算法</h3>
     <select id="algoSelect" onchange="setAlgorithm(this.value)">
       <option value="1">FCFS - 先来先服务</option>
@@ -74,6 +84,13 @@
     <div class="running-card" id="runningCard">
       <h3>当前运行进程</h3>
       <div id="runningInfo" class="idle">CPU 空闲</div>
+    </div>
+
+    <div class="queue-section single">
+      <div class="queue-panel">
+        <h4>IPC 消息 <span class="count" id="ipcCount">0</span></h4>
+        <table><thead><tr><th>接收方</th><th>发送方</th><th>时间</th><th>内容</th><th>操作</th></tr></thead><tbody id="ipcBody"></tbody></table>
+      </div>
     </div>
 
     <div class="queue-section single">

@@ -7,6 +7,7 @@ function renderStatus(data) {
   renderRunningActions(data);
   renderResources(data.resources);
   renderMemory(data.memory);
+  renderIpcMessages(data);
 }
 
 function renderRunningProcess(rp) {
@@ -144,4 +145,63 @@ function renderMemory(mem) {
       : `PID=${b.occupantPid}: ${b.size}KB [${b.startAddress}-${b.startAddress + b.size - 1}]`;
     bar.appendChild(seg);
   });
+}
+
+function renderIpcMessages(data) {
+  const tbody = document.getElementById('ipcBody');
+  const count = document.getElementById('ipcCount');
+  if (!tbody || !count) return;
+
+  const messages = [];
+  collectProcesses(data).forEach(p => {
+    (p.inbox || []).forEach(m => messages.push({
+      toPid: p.pid,
+      fromPid: m.fromPid,
+      content: m.content,
+      sentTime: m.sentTime
+    }));
+  });
+
+  count.textContent = messages.length;
+  if (messages.length === 0) {
+    tbody.innerHTML = '<tr><td colspan="5" class="empty-row">空</td></tr>';
+    return;
+  }
+
+  tbody.innerHTML = messages.map(m => `<tr>
+    <td><b>PID=${m.toPid}</b></td>
+    <td>PID=${m.fromPid}</td>
+    <td>T=${m.sentTime}</td>
+    <td class="message-content">${escapeHtml(m.content)}</td>
+    <td><button class="btn btn-danger btn-sm" onclick="clearIpc(${m.toPid})">清空</button></td>
+  </tr>`).join('');
+}
+
+function collectProcesses(data) {
+  const seen = new Set();
+  const processes = [];
+  const push = p => {
+    if (!p || seen.has(p.pid)) return;
+    seen.add(p.pid);
+    processes.push(p);
+  };
+
+  push(data.runningProcess);
+  ['pendingQueue', 'jobQueue', 'readyQueue', 'blockQueueA', 'blockQueueB', 'blockQueueC', 'deadQueue']
+    .forEach(name => (data[name] || []).forEach(push));
+  if (!data.blockQueueA && !data.blockQueueB && !data.blockQueueC) {
+    (data.blockQueue || []).forEach(push);
+  }
+
+  return processes;
+}
+
+function escapeHtml(value) {
+  return String(value ?? '').replace(/[&<>"']/g, ch => ({
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+    '"': '&quot;',
+    "'": '&#039;'
+  }[ch]));
 }

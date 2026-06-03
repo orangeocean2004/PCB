@@ -67,6 +67,7 @@ td{padding:5px 6px;border-bottom:1px solid #f5f5f5}
 th:last-child,td:last-child{text-align:center}
 .empty-row{color:#bbb;text-align:center;padding:16px!important}
 .process-actions{display:flex;gap:2px;justify-content:center}
+.message-content{text-align:left!important;max-width:360px;white-space:normal;word-break:break-word}
 
 /* 资源+内存 */
 .info-row{display:grid;grid-template-columns:1fr 1fr;gap:12px}

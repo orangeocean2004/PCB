@@ -65,4 +65,11 @@ public interface SchedulerService {
 
     // 唤醒指定PID的阻塞进程（需已持有资源才能唤醒，移入就绪队列）
     boolean wakeupProcess(int pid);
+
+    // ==== 进程间通信：最简单的消息传递模型 ====
+    boolean sendMessage(int fromPid, int toPid, String content);
+
+    List<PCB.IpcMessage> getMessages(int pid);
+
+    boolean clearMessages(int pid);
 }
