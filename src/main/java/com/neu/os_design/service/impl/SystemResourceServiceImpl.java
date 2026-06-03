@@ -31,7 +31,7 @@ public class SystemResourceServiceImpl implements SystemResourceService {
         resourceC = new Semaphore(initC);
         cpuResource = new Semaphore(1);
     }
-
+// 死锁避免 但是用不到 这个是初期想法 之后破坏了死锁发生必要条件 用死锁预防思想解决死锁了
     @Override
     public boolean checkResourcesEnough(PCB pcb) {
         // 计算该进程还需要多少资源
@@ -72,6 +72,7 @@ public class SystemResourceServiceImpl implements SystemResourceService {
             pcb.setGetB(pcb.getGetB() + remainingNeedB);
             pcb.setGetC(pcb.getGetC() + remainingNeedC);
             return true;
+            // 破坏死锁必要条件
         } else {
             // 如果有一个资源获取失败了，要释放已经获取的资源
             if (aAcquired) resourceA.release(remainingNeedA);

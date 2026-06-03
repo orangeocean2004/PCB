@@ -297,6 +297,34 @@ public class SchedulerIntegrationTest {
     }
 
     @Test
+    @DisplayName("调度：RR中完成进程释放的资源应先对状态可见")
+    void testRoundRobinReleasedResourcesVisibleBeforeBlockedWakeup() {
+        schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);
+
+        PCB p1 = schedulerService.submitProcess(5, 1, 5, 0, 0, 64);
+        schedulerService.submitProcess(5, 1, 5, 0, 0, 64);
+        PCB p3 = schedulerService.submitProcess(5, 1, 5, 0, 0, 64);
+
+        for (int i = 0; i < 9; i++) {
+            schedulerService.systemTick();
+        }
+
+        assertTrue(schedulerService.getDeadQueue().contains(p1),
+                "PID1应已完成并释放A资源");
+        assertTrue(schedulerService.getBlockQueue().contains(p3),
+                "PID3应仍在阻塞队列等待下一tick自动获取资源");
+        assertEquals(5, resourceService.getAvailableA(),
+                "PID1完成释放的A=5应先对前端状态可见，不能同tick被阻塞进程重新占用");
+
+        schedulerService.systemTick();
+
+        assertFalse(schedulerService.getBlockQueue().contains(p3),
+                "下一tick资源阻塞队列才应自动唤醒PID3");
+        assertEquals(0, resourceService.getAvailableA(),
+                "PID3自动获得A=5后，A资源才重新变为0");
+    }
+
+    @Test
     @DisplayName("调度：资源应在运行态申请且不应超额占用系统总资源")
     void testReadyQueueDoesNotOvercommitResources() {
         schedulerService.setAlgorithmType(SchedulerService.ALGO_RR);

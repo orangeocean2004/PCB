@@ -7,7 +7,6 @@ import com.neu.os_design.service.SystemResourceService;
 import com.neu.os_design.service.strategy.SchedulingStrategy;
 import com.neu.os_design.service.strategy.algorithm.*;
 
-import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 
 import java.util.Comparator;
@@ -17,36 +16,38 @@ import java.util.List;
 @Service
 public class SchedulerServiceImpl implements SchedulerService {
 
-    @Autowired
-    private MemoryService memoryService;
+    private static final int INITIAL_MEMORY_SIZE = 1024;
+    private static final int INITIAL_A = 10;
+    private static final int INITIAL_B = 10;
+    private static final int INITIAL_C = 10;
+    private static final int TIME_SLICE = 3; // 时间片长度 3 个时钟周期
 
-    @Autowired
-    private SystemResourceService resourceService;
+    private final MemoryService memoryService;
+    private final SystemResourceService resourceService;
 
     private int currentTime = 0;
-
-    // 初始资源配置，供 resetClock() 恢复
-    private int initialMemorySize = 1024;
-    private int initialA = 10;
-    private int initialB = 10;
-    private int initialC = 10;
 
     private SchedulingStrategy currentStrategy = new HRRN();
     private int currentAlgorithmType = SchedulerService.ALGO_HRRN;
 
     private int timeSliceCounter = 0;
-    private final int TIME_SLICE = 3; // 时间片长度 3 个时钟周期
 
     // 队列定义
     private final List<PCB> pendingQueue = new LinkedList<>(); // 待提交队列
     private final List<PCB> jobQueue = new LinkedList<>();   // 创建态队列
     private final List<PCB> readyQueue = new LinkedList<>();  // 就绪态队列
+    private final List<PCB> manualBlockQueue = new LinkedList<>(); // 阻塞队列
     private final List<PCB> blockQueueA = new LinkedList<>(); // 阻塞态队列 A 资源
     private final List<PCB> blockQueueB = new LinkedList<>(); // 阻塞态队列 B 资源
     private final List<PCB> blockQueueC = new LinkedList<>(); // 阻塞态队列 C 资源
     private final List<PCB> deadQueue = new LinkedList<>();   // 终止态队列
 
     private PCB runningProcess = null;    // 当前正在运行的进程
+
+    public SchedulerServiceImpl(MemoryService memoryService, SystemResourceService resourceService) {
+        this.memoryService = memoryService;
+        this.resourceService = resourceService;
+    }
 
     @Override
     public PCB submitProcess(int totalTime, int priority, int needA, int needB, int needC, int memoryNeed) {
@@ -139,7 +140,7 @@ public class SchedulerServiceImpl implements SchedulerService {
         // 6. 运行进程可能刚释放内存，立即重试创建队列，避免等到下一个 tick
         checkJobQueueForMemory();
 
-        // 7. 检查阻塞队列，有多余资源时自动调入就绪队列
+        // 7. 检查资源阻塞队列，有多余资源时自动调入就绪队列
         checkBlockQueueForResources();
 
         // 8. 被唤醒的高优先级进程也可以立即抢占
@@ -187,10 +188,22 @@ public class SchedulerServiceImpl implements SchedulerService {
         }
 
         pcb.setAllocatedMemory(pcb.getMemoryNeed());
+        moveToReady(pcb, source + " PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]，资源将在运行态申请");
+        return true;
+    }
+
+    private void moveToReady(PCB pcb, String message) {
         pcb.setState(PCB.READY);
         readyQueue.add(pcb);
-        System.out.println(source + " PID=" + pcb.getPid() + " 内存分配成功，进入 [就绪队列]，资源将在运行态申请");
-        return true;
+        if (message != null && !message.isBlank()) {
+            System.out.println(message);
+        }
+    }
+
+    private void clearRunningSlot() {
+        //重置输入
+        runningProcess = null;
+        timeSliceCounter = 0;
     }
 
     private void checkBlockQueueForResources() {
@@ -204,15 +217,14 @@ public class SchedulerServiceImpl implements SchedulerService {
         while (it.hasNext()) {
             PCB pcb = it.next();
             if (resourceService.allocateResources(pcb)) {
-                pcb.setState(PCB.READY);
                 it.remove();
-                readyQueue.add(pcb);
-                System.out.println("[阻塞队列" + resourceName + "] PID=" + pcb.getPid() + " 资源分配成功，进入 [就绪队列]");
+                moveToReady(pcb, "[阻塞队列" + resourceName + "] PID=" + pcb.getPid() + " 资源分配成功，进入 [就绪队列]");
             }
         }
     }
 
     private void preemptRunningProcessIfNeeded() {
+        //判断是否要发生被动抢占
         if (!(currentStrategy instanceof PreemptivePriority preemptivePriority)
                 || runningProcess == null
                 || readyQueue.isEmpty()) {
@@ -220,6 +232,7 @@ public class SchedulerServiceImpl implements SchedulerService {
         }
 
         PCB bestCandidate = currentStrategy.selectNextProcess(readyQueue);
+        //判断最优候选进程和当前运行进程的优先级关系，如果没有更高优先级的候选进程，则不抢占
         if (bestCandidate == null || !preemptivePriority.hasHigherPriority(bestCandidate, runningProcess)) {
             return;
         }
@@ -228,10 +241,9 @@ public class SchedulerServiceImpl implements SchedulerService {
                 + runningProcess.getPid() + "，当前进程回到 [就绪队列]");
 
         resourceService.releaseCpu();
-        runningProcess.setState(PCB.READY);
-        readyQueue.add(runningProcess);
-        runningProcess = null;
-        timeSliceCounter = 0;
+        PCB preemptedProcess = runningProcess;
+        clearRunningSlot();
+        moveToReady(preemptedProcess, null);
     }
 
     private void manageRunningProcess() {
@@ -247,28 +259,19 @@ public class SchedulerServiceImpl implements SchedulerService {
 
 
         if (isDead) {
-            System.out.println("[完成] PID=" + runningProcess.getPid() + " 进程完成，进入 [终止队列]");
-
-            // 进程完成，回收资源和内存
+            PCB finishedProcess = runningProcess;
             resourceService.releaseCpu();
-            resourceService.releaseResources(runningProcess);
-            memoryService.releaseMemory(runningProcess.getPid());
-
-
-
-            // 转移到终止队列
-            deadQueue.add(runningProcess);
-            runningProcess = null;
-            timeSliceCounter = 0;
+            clearRunningSlot();
+            terminateProcess(finishedProcess, true, true,
+                    "[完成] PID=" + finishedProcess.getPid() + " 进程完成，进入 [终止队列]");
         } else if (currentStrategy instanceof RR && timeSliceCounter >= TIME_SLICE) {
             System.out.println("[时间片到] PID=" + runningProcess.getPid() + " 时间片到，回到 [就绪队列] 队尾");
 
             // 时间片到，回收CPU资源，转移回就绪队列
             resourceService.releaseCpu();
-            runningProcess.setState(PCB.READY);
-            readyQueue.add(runningProcess);
-            runningProcess = null;
-            timeSliceCounter = 0;
+            PCB expiredProcess = runningProcess;
+            clearRunningSlot();
+            moveToReady(expiredProcess, null);
         }
     }
 
@@ -278,35 +281,32 @@ public class SchedulerServiceImpl implements SchedulerService {
             return;
         }
 
-        if (readyQueue.isEmpty()) {
-            return;
-        }
+        while (!readyQueue.isEmpty()) {
+            // 根据现有调度算法从就绪队列中选出一个最优的进程
+            PCB bestCandidate = currentStrategy.selectNextProcess(readyQueue);
+            if (bestCandidate == null) {
+                return;
+            }
 
-        // 根据现有调度算法从就绪队列中选出一个最优的进程
-        PCB bestCandidate = currentStrategy.selectNextProcess(readyQueue);
+            if (!resourceService.allocateCpu()) {
+                System.err.println("[异常] CPU 被占用，PID=" + bestCandidate.getPid() + " 调度失败");
+                return;
+            }
 
-        if (bestCandidate == null) {
-            return;
-        }
+            readyQueue.remove(bestCandidate);
+            runningProcess = bestCandidate;
+            runningProcess.setState(PCB.RUNNING);
 
-        if (!resourceService.allocateCpu()) {
-            System.err.println("[异常] CPU 被占用，PID=" + bestCandidate.getPid() + " 调度失败");
-            return;
-        }
+            if (runningProcess.getStartTime() == -1) {
+                runningProcess.setStartTime(currentTime);
+            }
 
-        readyQueue.remove(bestCandidate);
-        runningProcess = bestCandidate;
-        runningProcess.setState(PCB.RUNNING);
+            System.out.println("[调度][" + currentStrategy.getAlgorithmName() + "] PID=" + runningProcess.getPid()
+                    + " 被调度运行，开始自动申请资源 响应比: " + runningProcess.getResponseRatio());
 
-        if (runningProcess.getStartTime() == -1) {
-            runningProcess.setStartTime(currentTime);
-        }
-
-        System.out.println("[调度][" + currentStrategy.getAlgorithmName() + "] PID=" + runningProcess.getPid()
-                + " 被调度运行，开始自动申请资源 响应比: " + runningProcess.getResponseRatio());
-
-        if (!requestResourcesForRunningProcess()) {
-            scheduleNextProcess();
+            if (requestResourcesForRunningProcess()) {
+                return;
+            }
         }
     }
 
@@ -323,8 +323,7 @@ public class SchedulerServiceImpl implements SchedulerService {
         PCB blockedProcess = runningProcess;
         resourceService.releaseCpu();
         blockedProcess.setState(PCB.BLOCK);
-        runningProcess = null;
-        timeSliceCounter = 0;
+        clearRunningSlot();
         addToMissingResourceBlockQueue(blockedProcess, "[运行申请资源]");
         return false;
     }
@@ -355,6 +354,7 @@ public class SchedulerServiceImpl implements SchedulerService {
     @Override
     public List<PCB> getBlockQueue() {
         List<PCB> combined = new LinkedList<>();
+        combined.addAll(manualBlockQueue);
         combined.addAll(blockQueueA);
         combined.addAll(blockQueueB);
         combined.addAll(blockQueueC);
@@ -404,12 +404,13 @@ public class SchedulerServiceImpl implements SchedulerService {
         pendingQueue.clear();
         jobQueue.clear();
         readyQueue.clear();
+        manualBlockQueue.clear();
         blockQueueA.clear();
         blockQueueB.clear();
         blockQueueC.clear();
         deadQueue.clear();
-        memoryService.resetMemory(initialMemorySize);
-        resourceService.resetResources(initialA, initialB, initialC);
+        memoryService.resetMemory(INITIAL_MEMORY_SIZE);
+        resourceService.resetResources(INITIAL_A, INITIAL_B, INITIAL_C);
         com.neu.os_design.model.PCB.resetPidSeq();
     }
 
@@ -454,62 +455,22 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     @Override
     public boolean cancelProcess(int pid) {
-        // 1. 检查是否在待提交队列
-        var pendingIt = pendingQueue.iterator();
-        while (pendingIt.hasNext()) {
-            PCB pcb = pendingIt.next();
-            if (pcb.getPid() == pid) {
-                pendingIt.remove();
-                pcb.setState(PCB.DEAD);
-                deadQueue.add(pcb);
-                System.out.println("[撤销] PID=" + pid + " 从待提交队列中撤销，进入 [终止队列]");
-                return true;
-            }
-        }
-
-        // 2. 检查是否在创建队列
-        var jobIt = jobQueue.iterator();
-        while (jobIt.hasNext()) {
-            PCB pcb = jobIt.next();
-            if (pcb.getPid() == pid) {
-                jobIt.remove();
-                pcb.setState(PCB.DEAD);
-                deadQueue.add(pcb);
-                System.out.println("[撤销] PID=" + pid + " 从创建队列中撤销，进入 [终止队列]");
-                return true;
-            }
-        }
-
-        // 3. 检查是否在就绪队列
-        var readyIt = readyQueue.iterator();
-        while (readyIt.hasNext()) {
-            PCB pcb = readyIt.next();
-            if (pcb.getPid() == pid) {
-                readyIt.remove();
-                memoryService.releaseMemory(pid);
-                resourceService.releaseResources(pcb);
-                pcb.setState(PCB.DEAD);
-                deadQueue.add(pcb);
-                System.out.println("[撤销] PID=" + pid + " 从就绪队列中撤销，资源已回收，进入 [终止队列]");
-                return true;
-            }
-        }
-
-        // 4. 检查是否在阻塞队列 (由于拆分ABC，此处提取到独立方法)
-        if (cancelFromQueue(blockQueueA, pid) || cancelFromQueue(blockQueueB, pid) || cancelFromQueue(blockQueueC, pid)) {
+        if (cancelFromQueue(pendingQueue, pid, false, false, "待提交队列")
+                || cancelFromQueue(jobQueue, pid, false, false, "创建队列")
+                || cancelFromQueue(readyQueue, pid, true, true, "就绪队列")
+                || cancelFromQueue(manualBlockQueue, pid, true, true, "手动阻塞队列")
+                || cancelFromQueue(blockQueueA, pid, true, true, "阻塞队列A")
+                || cancelFromQueue(blockQueueB, pid, true, true, "阻塞队列B")
+                || cancelFromQueue(blockQueueC, pid, true, true, "阻塞队列C")) {
             return true;
         }
-
-        // 5. 检查是否是当前运行的进程
+        //检查要撤销的队列在不在运行状态
         if (runningProcess != null && runningProcess.getPid() == pid) {
+            PCB canceledProcess = runningProcess;
             resourceService.releaseCpu();
-            memoryService.releaseMemory(pid);
-            resourceService.releaseResources(runningProcess);
-            runningProcess.setState(PCB.DEAD);
-            deadQueue.add(runningProcess);
-            System.out.println("[撤销] PID=" + pid + " 正在运行的进程被撤销，CPU/内存/资源已回收，进入 [终止队列]");
-            runningProcess = null;
-            timeSliceCounter = 0;
+            clearRunningSlot();
+            terminateProcess(canceledProcess, true, true,
+                    "[撤销] PID=" + pid + " 正在运行的进程被撤销，CPU/内存/资源已回收，进入 [终止队列]");
             return true;
         }
 
@@ -517,21 +478,33 @@ public class SchedulerServiceImpl implements SchedulerService {
         return false;
     }
 
-    private boolean cancelFromQueue(List<PCB> queue, int pid) {
+    private boolean cancelFromQueue(List<PCB> queue, int pid, boolean releaseMemory, boolean releaseResources,
+                                    String queueName) {
         var it = queue.iterator();
         while (it.hasNext()) {
             PCB pcb = it.next();
             if (pcb.getPid() == pid) {
                 it.remove();
-                memoryService.releaseMemory(pid);
-                resourceService.releaseResources(pcb);
-                pcb.setState(PCB.DEAD);
-                deadQueue.add(pcb);
-                System.out.println("[撤销] PID=" + pid + " 从阻塞队列中撤销，资源已回收，进入 [终止队列]");
+                String cleanup = releaseMemory || releaseResources ? "，资源已回收" : "";
+                terminateProcess(pcb, releaseMemory, releaseResources,
+                        "[撤销] PID=" + pid + " 从" + queueName + "中撤销" + cleanup + "，进入 [终止队列]");
                 return true;
             }
         }
         return false;
+    }
+
+    //进程死亡处理函数
+    private void terminateProcess(PCB pcb, boolean releaseMemory, boolean releaseResources, String message) {
+        if (releaseMemory) {
+            memoryService.releaseMemory(pcb.getPid());
+        }
+        if (releaseResources) {
+            resourceService.releaseResources(pcb);
+        }
+        pcb.setState(PCB.DEAD);
+        deadQueue.add(pcb);
+        System.out.println(message);
     }
 
     @Override
@@ -544,18 +517,19 @@ public class SchedulerServiceImpl implements SchedulerService {
         PCB pcb = runningProcess;
         resourceService.releaseCpu();
         pcb.setState(PCB.BLOCK);
-        runningProcess = null;
-        timeSliceCounter = 0;
+        clearRunningSlot();
 
-        // 手动阻塞时，默认放入队列A作为暂存区
-        blockQueueA.add(pcb);
-        System.out.println("[阻塞] PID=" + pcb.getPid() + " 被手动阻塞，CPU已释放，资源保留，进入 [阻塞队列A]");
+        manualBlockQueue.add(pcb);
+        System.out.println("[阻塞] PID=" + pcb.getPid() + " 被手动阻塞，CPU已释放，资源保留，进入 [手动阻塞队列]");
         return true;
     }
 
     @Override
     public boolean wakeupProcess(int pid) {
-        if (wakeupFromQueue(blockQueueA, pid) || wakeupFromQueue(blockQueueB, pid) || wakeupFromQueue(blockQueueC, pid)) {
+        if (wakeupFromQueue(manualBlockQueue, pid)
+                || wakeupFromQueue(blockQueueA, pid)
+                || wakeupFromQueue(blockQueueB, pid)
+                || wakeupFromQueue(blockQueueC, pid)) {
             return true;
         }
         System.out.println("[唤醒] 未在阻塞队列中找到 PID=" + pid);
@@ -573,9 +547,7 @@ public class SchedulerServiceImpl implements SchedulerService {
                 }
 
                 it.remove();
-                pcb.setState(PCB.READY);
-                readyQueue.add(pcb);
-                System.out.println("[唤醒] PID=" + pid + " 唤醒成功，进入 [就绪队列]");
+                moveToReady(pcb, "[唤醒] PID=" + pid + " 唤醒成功，进入 [就绪队列]");
                 return true;
             }
         }
@@ -605,6 +577,7 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     @Override
     public List<PCB.IpcMessage> getMessages(int pid) {
+        //查看消息
         PCB pcb = findProcessByPid(pid);
         if (pcb == null) {
             return List.of();
@@ -615,6 +588,7 @@ public class SchedulerServiceImpl implements SchedulerService {
 
     @Override
     public boolean clearMessages(int pid) {
+        //清空收件箱
         PCB pcb = findProcessByPid(pid);
         if (pcb == null) {
             System.out.println("[IPC] 清空失败：未找到 PID=" + pid);
@@ -635,20 +609,15 @@ public class SchedulerServiceImpl implements SchedulerService {
             return runningProcess;
         }
 
-        PCB found = findInQueue(jobQueue, pid);
-        if (found != null) return found;
-        found = findInQueue(readyQueue, pid);
-        if (found != null) return found;
-        found = findInQueue(blockQueueA, pid);
-        if (found != null) return found;
-        found = findInQueue(blockQueueB, pid);
-        if (found != null) return found;
-        found = findInQueue(blockQueueC, pid);
-        if (found != null) return found;
-        found = findInQueue(deadQueue, pid);
-        if (found != null) return found;
+        for (List<PCB> queue : List.of(jobQueue, readyQueue, manualBlockQueue,
+                blockQueueA, blockQueueB, blockQueueC, deadQueue, pendingQueue)) {
+            PCB found = findInQueue(queue, pid);
+            if (found != null) {
+                return found;
+            }
+        }
 
-        return findInQueue(pendingQueue, pid);
+        return null;
     }
 
     private PCB findInQueue(List<PCB> queue, int pid) {
